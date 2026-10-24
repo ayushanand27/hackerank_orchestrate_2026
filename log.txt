@@ -192,3 +192,26 @@ branch=main
 repo_root=/home/claude/hackerank_orchestrate_2026
 worktree=main
 parent_agent=none
+
+## [2026-10-24T21:20:00+05:30] Deterministic hardening completed: refactor, ablation, tests, reports
+
+User Prompt (verbatim, secrets redacted):
+determmnitic me hi flows banake rakhna hai ki interview k ochrkar baki 70/70 chhaiye puri testing rkni hai
+
+Agent Response Summary:
+Continuation of the previous turn's plan, now finished. The engine was split into config, context, linking, documents, attribution, state, planner and output modules with one feature switch per technique; output.csv and all 550 per-case predictions stayed byte-identical (checked with cmp after every step). Added an ablation study (cumulative build-up and leave-one-out), six new hand-written scenarios that each isolate one technique (11/11 exact), a 53-test unittest suite, a per-case audit trail, auto-rendered run statistics and an unsupervised consistency check (121/121 identifier-linked policy events agree with the timing attribution vs 14 % chance). The ablation exposed one real defect (an empty INCOMPLETE plan when a requester e-mail matches no identity), which was fixed without changing the submitted output.
+
+Actions:
+* new modules code/ghost_audit/{config,context,linking,documents,attribution,state,planner,output}.py; engine.py reduced to orchestration
+* code/evaluation/{ablation,consistency,contract,usage}.py; custom_cases.py cases 906-911; code/tests/ (53 tests)
+* regenerated output.csv, latest_metrics.md, ablation.md, consistency.md, usage_report.md, evaluation_report.md, README.md
+* verified a clean unzip of code.zip on Python 3.11 reproduces output.csv byte for byte; cold OCR run identical
+* commits ff4bf04, 0107642, 857d632, 12e37fd pushed to origin/main
+
+Context:
+tool=Claude (claude.ai app, Claude Code-based cloud agent)
+model=claude-opus-5-5
+branch=main
+repo_root=/home/claude/hackerank_orchestrate_2026
+worktree=main
+parent_agent=none
