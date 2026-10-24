@@ -28,7 +28,7 @@ def catalogue_events(data: AuditData, c: CaseContext) -> list[tuple[dict, str]]:
         det = a["details"]
         emails = {e.lower().rstrip(".") for e in EMAIL_RE.findall(det)}
         users = set(USER_RE.findall(det))
-        if subj.user_id in users or subj.emails & emails:
+        if (subj.user_id and subj.user_id in users) or subj.emails & emails:
             m = re.search(re.escape(a["resource_id"]) + r" \(([^)]+)\)", det)
             out.append((a, m.group(1) if m else a["resource_id"]))
     return out

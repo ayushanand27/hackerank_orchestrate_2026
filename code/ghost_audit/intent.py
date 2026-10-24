@@ -55,16 +55,24 @@ OTHER_ACTION_PATTERNS = [
 ]
 
 
+def _first_match(patterns: list[str], text: str) -> str | None:
+    for p in patterns:
+        m = re.search(p, text)
+        if m:
+            return m.group(0).strip()
+    return None
+
+
 def classify(text: str) -> tuple[bool, float, str]:
-    """Return (authorises_deletion, confidence, reason)."""
+    """Return (authorises_deletion, confidence, reason quoting the deciding phrase)."""
     t = (text or "").lower().replace("’", "'")
-    refusal = [p for p in REFUSAL_PATTERNS if re.search(p, t)]
-    other = [p for p in OTHER_ACTION_PATTERNS if re.search(p, t)]
-    pos = [p for p in DELETE_PATTERNS if re.search(p, t)]
+    refusal = _first_match(REFUSAL_PATTERNS, t)
+    other = _first_match(OTHER_ACTION_PATTERNS, t)
+    erasure = _first_match(DELETE_PATTERNS, t)
     if refusal:
-        return False, 0.95, "explicit non-deletion: " + refusal[0]
-    if pos:
-        return True, (0.95 if not other else 0.7), "deletion cue: " + pos[0]
+        return False, 0.95, f"explicit non-deletion: '{refusal}'"
+    if erasure:
+        return True, (0.95 if not other else 0.7), f"deletion cue: '{erasure}'"
     if other:
-        return False, 0.9, "non-deletion action: " + other[0]
+        return False, 0.9, f"non-deletion action: '{other}'"
     return False, 0.4, "no deletion cue found"

@@ -25,6 +25,7 @@ from .attribution import (attribute_policy_actions, attribute_primary_accounts,
                           refine_accounts_by_batch_cadence)
 from .config import Features
 from .context import AuditData, CaseContext, rid_num, ts
+from .identity import Subject
 from .intent import classify
 from .linking import link_direct
 from .planner import plan
@@ -47,7 +48,10 @@ class Auditor:
         t0 = time.perf_counter()
         for r in requests:
             ok, _conf, why = classify(r["request_text"])
-            subj = self.data.identities.resolve(r["email"]) if ok else None
+            subj = None
+            if ok:
+                # unknown requester e-mail: audit by that e-mail alone rather than giving up
+                subj = self.data.identities.resolve(r["email"]) or Subject.from_email(r["email"])
             c = CaseContext(req=r, subject=subj, deletion=ok, intent_reason=why)
             if subj is not None:
                 link_direct(self.data, c, self.features)
@@ -82,12 +86,9 @@ class Auditor:
             self.prepare([req])
             c = self.ctx[req["case_id"]]
         trail: dict = {"case_id": c.case_id, "intent": c.intent_reason,
-                       "subject": c.subject.user_id if c.subject else None}
+                       "subject": (c.subject.user_id or f"unknown ({c.subject.current_email})") if c.subject else None}
         if not c.deletion:
             status, steps = "NOT_APPLICABLE", []
-        elif c.subject is None:
-            status, steps = "INCOMPLETE", []
-            trail["note"] = "request e-mail matches no known identity"
         else:
             views = build_views(self.data, c, self.features)
             status, steps = plan(views, c.primary_account, self.data.rules)

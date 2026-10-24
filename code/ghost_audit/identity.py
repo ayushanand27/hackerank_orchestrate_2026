@@ -57,6 +57,13 @@ class Subject:
     def audit_ids(self) -> list[str]:
         return [h[4] for h in self.history]
 
+    @classmethod
+    def from_email(cls, email: str) -> "Subject":
+        """Ad-hoc subject for a request e-mail that matches no known identity: the audit then
+        searches the evidence for that e-mail (and its hash) alone."""
+        e = norm_email(email)
+        return cls(user_id="", name="", emails={e}, current_email=e, hashes={email_hash(e)})
+
 
 class IdentityIndex:
     """All known subjects, indexed by every e-mail they have ever used.

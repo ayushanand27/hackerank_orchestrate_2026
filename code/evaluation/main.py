@@ -1,13 +1,17 @@
 #!/usr/bin/env python3
 """Evaluation workflow for the Ghost Data deletion-audit agent.
 
-Runs three checks and prints a Markdown summary (also written to evaluation/latest_metrics.md):
+Runs three checks and prints a Markdown summary (also written to evaluation/latest_metrics.md),
+then re-renders usage_report.md from the statistics of the last ``code/main.py`` run:
 
 1. Public sample  - agent output on dataset/sample_deletion_requests.csv vs dataset/sample_output.csv
                     (case status accuracy, step precision/recall/F1, field accuracy, sequence accuracy)
 2. Custom cases   - synthetic scenarios from custom_cases.py with hand-written expected answers
 3. Contract check - structural validation of the full output.csv (518 rows, ordering, vocabulary,
                     evidence-citation rules, no evidence captured after audit_at)
+
+Related: ``ablation.py`` (strategy comparison, ~2 min) and the unit tests
+(``python3 -m unittest discover -s code/tests``).
 
 Usage (from repository root):
     python3 code/evaluation/main.py [--output output.csv]
@@ -29,6 +33,12 @@ from ghost_audit.engine import Auditor  # noqa: E402
 from contract import validate_output  # noqa: E402
 from metrics import compare, summary, load_output_csv  # noqa: E402
 import custom_cases  # noqa: E402
+import usage  # noqa: E402
+
+
+def read_csv(path: str) -> list[dict]:
+    with open(path, encoding="utf-8") as fh:
+        return list(csv.DictReader(fh))
 
 
 def fmt_summary(name: str, s: dict) -> str:
@@ -55,8 +65,8 @@ def main(argv=None):
     md = ["# Latest evaluation run\n"]
     # 1. public sample
     auditor = Auditor(args.dataset, args.cache)
-    sample = list(csv.DictReader(open(os.path.join(args.dataset, "sample_deletion_requests.csv"), encoding="utf-8")))
-    allreq = sample + list(csv.DictReader(open(os.path.join(args.dataset, "deletion_requests.csv"), encoding="utf-8")))
+    sample = read_csv(os.path.join(args.dataset, "sample_deletion_requests.csv"))
+    allreq = sample + read_csv(os.path.join(args.dataset, "deletion_requests.csv"))
     auditor.prepare(allreq)
     pred = {}
     for r in sample:
@@ -84,7 +94,7 @@ def main(argv=None):
     md.append("## 3. Contract validation of output.csv\n")
     if os.path.exists(args.output):
         errs = validate_output(args.output, args.dataset)
-        rows = list(csv.DictReader(open(args.output, encoding="utf-8")))
+        rows = read_csv(args.output)
         dist = {}
         for r in rows:
             dist[r["deletion_status"]] = dist.get(r["deletion_status"], 0) + 1
@@ -96,7 +106,13 @@ def main(argv=None):
         md.append("- output.csv not found (run `python3 code/main.py` first)")
     text = "\n".join(md) + "\n"
     print(text)
-    open(os.path.join(HERE, "latest_metrics.md"), "w", encoding="utf-8").write(text)
+    with open(os.path.join(HERE, "latest_metrics.md"), "w", encoding="utf-8") as fh:
+        fh.write(text)
+    warm = usage._load("run_stats.json")
+    if warm:
+        with open(os.path.join(HERE, "usage_report.md"), "w", encoding="utf-8") as fh:
+            fh.write(usage.render(warm, usage._load("run_stats_cold.json")))
+        print("usage_report.md re-rendered from run_stats.json")
 
 
 if __name__ == "__main__":

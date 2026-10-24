@@ -5,12 +5,14 @@ Usage (from the repository root):
     python3 code/main.py                      # audits dataset/deletion_requests.csv -> ./output.csv
     python3 code/main.py --requests dataset/sample_deletion_requests.csv --out sample_pred.csv
     python3 code/main.py --explain case_44    # print the reasoning trail for one case
-    python3 code/main.py --trail audit_trail.jsonl   # reasoning trail for every case
+    python3 code/main.py --trail trail.jsonl  # reasoning trail for every case to another file
 
 No network access and no LLM calls: every decision is derived from the supplied files.
-A run over the evaluation requests also records run statistics in
-code/evaluation/run_stats.json (rendered into code/evaluation/usage_report.md by
-code/evaluation/main.py).
+A run over the evaluation requests (the default) also writes
+  code/evaluation/audit_trail.jsonl  - one JSON line per case: intent, subject, primary profile,
+                                       every linked resource with the reasons it was linked,
+                                       its state / category / evidence, and the emitted steps
+  code/evaluation/run_stats.json     - run statistics (rendered into usage_report.md)
 """
 from __future__ import annotations
 
@@ -33,6 +35,7 @@ from ghost_audit.output import case_sort_key, write_output  # noqa: E402
 
 REPO = os.path.dirname(HERE)
 DEFAULT_STATS = os.path.join(HERE, "evaluation", "run_stats.json")
+DEFAULT_TRAIL = os.path.join(HERE, "evaluation", "audit_trail.jsonl")
 
 
 def read_requests(path: str) -> list[dict]:
@@ -103,7 +106,7 @@ def main(argv=None):
     ap.add_argument("--out", default=os.path.join(REPO, "output.csv"))
     ap.add_argument("--cache", default=os.path.join(HERE, ".cache"), help="OCR cache directory")
     ap.add_argument("--explain", default=None, help="case_id to print a reasoning trail for")
-    ap.add_argument("--trail", default=None, help="write a JSONL reasoning trail for every case")
+    ap.add_argument("--trail", default=None, help="JSONL reasoning trail (default: written for the evaluation run)")
     ap.add_argument("--stats", default=None, help="run-statistics JSON (default: written for the evaluation run)")
     args = ap.parse_args(argv)
 
@@ -121,8 +124,9 @@ def main(argv=None):
         if args.explain == r["case_id"]:
             print(json.dumps(dict(trail, request=r, steps=steps), indent=2, ensure_ascii=False))
     write_output(args.out, rows)
-    if args.trail:
-        with open(args.trail, "w", encoding="utf-8") as fh:
+    trail_path = args.trail or (DEFAULT_TRAIL if args.requests is None else None)
+    if trail_path:
+        with open(trail_path, "w", encoding="utf-8") as fh:
             for t in trails:
                 fh.write(json.dumps(t, ensure_ascii=False, sort_keys=True) + "\n")
     wall = time.time() - t0

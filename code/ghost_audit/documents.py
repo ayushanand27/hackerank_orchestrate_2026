@@ -56,7 +56,7 @@ def doc_observations(docs: list[Document], subj: Subject, links: dict, audit_at:
         if d.file_time > audit_at:
             continue
         text_sq = squash(d.text)
-        mentions_subject = subj.user_id in d.users or bool(subj.emails & set(d.emails))
+        mentions_subject = (bool(subj.user_id) and subj.user_id in d.users) or bool(subj.emails & set(d.emails))
         chosen = {}
         for rid, (a, alias) in links.items():
             al = squash(re.sub(r"\.(pdf|zip|png|jpg)$", "", alias, flags=re.I))
@@ -77,6 +77,7 @@ def doc_observations(docs: list[Document], subj: Subject, links: dict, audit_at:
             o.finish()
             o.state, cat = doc_state(d, rid)
             o.category = cat or o.category
-            o.keys.add(subj.user_id)
+            if subj.user_id:
+                o.keys.add(subj.user_id)
             out.append(o)
     return out

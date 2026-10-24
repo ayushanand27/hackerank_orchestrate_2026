@@ -76,8 +76,9 @@ def build(tmp: str):
     _write(os.path.join(tmp, "deletion_rules.csv"), RULES)
 
     reqs = [
-        # C1: request made with a HISTORICAL e-mail; search entry still holds the old address;
-        #     a regional replica still holds the profile that the primary already deleted.
+        # C1: request made with a HISTORICAL e-mail; the search entry still holds that old address
+        #     while a regional replica still holds the (deleted) profile under the CURRENT address:
+        #     only the audit-log history connects the two.
         ("case_901", "alpha.old@example.org", "2026-09-01T10:00:00Z", "COMPLETE", "2026-09-02T10:00:00Z",
          "2026-09-10T10:00:00Z", "Please delete my account and everything tied to my old address."),
         # C2: non-deletion (access) request that mentions deletion only to refuse it.
@@ -192,7 +193,7 @@ def build(tmp: str):
 BEGIN TRANSACTION;
 CREATE TABLE customer_data_primary (resource_id TEXT PRIMARY KEY, origin_system TEXT NOT NULL, collection_name TEXT NOT NULL, record_json TEXT NOT NULL, updated_at TEXT NOT NULL);
 CREATE TABLE customer_data_replica_eu_west (resource_id TEXT PRIMARY KEY, origin_system TEXT NOT NULL, collection_name TEXT NOT NULL, record_json TEXT NOT NULL, updated_at TEXT NOT NULL);
-INSERT INTO "customer_data_replica_eu_west" VALUES('account_9901','account_service','customer_profiles','{"resource_id":"account_9901","customer_reference":"user_901","full_name":"Test Alpha","email":"alpha.old@example.org","phone":null,"account_status":"ACTIVE"}','2026-09-09T09:00:00Z');
+INSERT INTO "customer_data_replica_eu_west" VALUES('account_9901','account_service','customer_profiles','{"resource_id":"account_9901","customer_reference":null,"full_name":"Test Alpha","email":"alpha.new@example.org","phone":null,"account_status":"ACTIVE"}','2026-09-09T09:00:00Z');
 INSERT INTO "customer_data_primary" VALUES('tombstone_9905','identity_service','deleted_customer_references','{"resource_id":"tombstone_9905","subject_reference":"user_905","name":null,"email":"echo@example.org","phone":null,"email_hash":null,"account_status":"DELETED"}','2026-09-09T09:00:00Z');
 INSERT INTO "customer_data_primary" VALUES('audit_record_9905','security_service','security_audit_events','{"resource_id":"audit_record_9905","subject_reference":"user_905","event_name":"account_deletion_reviewed"}','2026-09-09T09:00:00Z');
 COMMIT;
@@ -328,8 +329,9 @@ COMMIT;
 
 
 DESCRIPTIONS = {
-    "case_901": "Request sent from a historical e-mail; search entry keyed by the old address and a regional "
-                "replica still holding a profile the primary already deleted (replication drift).",
+    "case_901": "Request sent from a historical e-mail; the search entry is keyed by that old address while a "
+                "regional replica still holds the deleted profile under the current address (replication drift); "
+                "only the identity history links both.",
     "case_902": "Access/portability request that explicitly refuses deletion -> NOT_APPLICABLE with [].",
     "case_903": "Compliant at audit_at; a connector re-creates the search entry two days AFTER audit_at (must be "
                 "ignored) and a look-alike decoy e-mail (gamma.jr@...) must not be attributed.",
