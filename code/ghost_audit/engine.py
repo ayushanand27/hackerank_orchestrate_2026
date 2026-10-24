@@ -381,7 +381,8 @@ class Auditor:
                 # fall back to the phase implied by the case's own identifier-bearing policy actions
                 for a in acts:
                     if a["resource_id"] in c.direct and a["event_type"] in self.PHASE:
-                        ph = (a["_t"].second - self.PHASE[a["event_type"]]) % 60
+                        off = 40.5 if a["target_system"] in ("identity_service", "legal_service") else self.PHASE[a["event_type"]]
+                        ph = (a["_t"].second - off) % 60
                         break
             phases[c.req["case_id"]] = ph
         pairs = []
@@ -390,10 +391,14 @@ class Auditor:
             if ph is None:
                 continue
             has_analytics = any(r.startswith("analytics_") and r in c.direct for r in c.direct)
+            # policy actions occupy consecutive 7.5-minute slots (legal hold first); each slot
+            # advances the seconds phase by ~29.5 s
+            has_hold = any(a["event_type"] == "RETAIN_RECORD" and a["resource_id"] in c.direct for a in acts)
             for a in free:
                 if a["event_type"] == "ANONYMIZE_RECORD" and has_analytics:
                     continue
-                d = self._circ(a["_t"].second, (ph + self.PHASE[a["event_type"]]) % 60)
+                k = 1 if (a["event_type"] == "ANONYMIZE_RECORD" and has_hold) else 0
+                d = self._circ(a["_t"].second, (ph + 40.5 + 29.5 * k) % 60)
                 if d <= 1.5:
                     pairs.append((d, c, a))
         pairs.sort(key=lambda x: (x[0], rid_num(x[1].req["case_id"])))
