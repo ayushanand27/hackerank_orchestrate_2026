@@ -48,6 +48,7 @@ class CaseContext:
     attributed: dict = field(default_factory=lambda: defaultdict(set))
     primary_account: str | None = None
     doc_obs: list = field(default_factory=list)
+    policy_claims: dict = field(default_factory=dict)
 
 
 class Auditor:
@@ -347,7 +348,8 @@ class Auditor:
     # A case's follow-up policy actions inherit the seconds-of-minute phase of its primary-profile
     # submission (anonymise/disable ~ +40 s, redact/block ~ +10 s).  This ties identifier-free
     # records (anonymised analytics) to exactly one case.
-    PHASE = {"ANONYMIZE_RECORD": 40.5, "DISABLE_DATA_FLOW": 39.5, "REDACT_RECORD": 10, "BLOCK_RESTORE": 9}
+    PHASE = {"ANONYMIZE_RECORD": 40.5, "DISABLE_DATA_FLOW": 39.5, "REDACT_RECORD": 10, "BLOCK_RESTORE": 9,
+             "RETAIN_RECORD": 40.5}
 
     def _case_phase(self, c: CaseContext):
         acct = c.primary_account
@@ -371,7 +373,7 @@ class Auditor:
         if not acts:
             return
         owned = lambda rid: any(rid in k.direct for k in self.ctx.values() if k.deletion)
-        free = [a for a in acts if a["event_type"] == "ANONYMIZE_RECORD" and not owned(a["resource_id"])]
+        free = [a for a in acts if a["event_type"] in ("ANONYMIZE_RECORD", "RETAIN_RECORD") and not owned(a["resource_id"])]
         phases = {}
         for c in cases:
             ph = self._case_phase(c)
@@ -385,22 +387,28 @@ class Auditor:
         pairs = []
         for c in cases:
             ph = phases[c.req["case_id"]]
-            if ph is None or any(r.startswith("analytics_") and r in c.direct for r in c.direct):
+            if ph is None:
                 continue
+            has_analytics = any(r.startswith("analytics_") and r in c.direct for r in c.direct)
             for a in free:
-                d = self._circ(a["_t"].second, (ph + self.PHASE["ANONYMIZE_RECORD"]) % 60)
+                if a["event_type"] == "ANONYMIZE_RECORD" and has_analytics:
+                    continue
+                d = self._circ(a["_t"].second, (ph + self.PHASE[a["event_type"]]) % 60)
                 if d <= 1.5:
                     pairs.append((d, c, a))
         pairs.sort(key=lambda x: (x[0], rid_num(x[1].req["case_id"])))
         used_c, used_a = set(), set()
         for d, c, a in pairs:
-            if id(c) in used_c or a["resource_id"] in used_a:
+            key = (id(c), a["event_type"])
+            if key in used_c or a["resource_id"] in used_a:
                 continue
-            used_c.add(id(c))
+            used_c.add(key)
             used_a.add(a["resource_id"])
             c.attributed[a["resource_id"]].add("policy-phase:" + a["activity_id"])
+            c.policy_claims[a["resource_id"]] = a
+        used_c = {k[0] for k in used_c}
         # leftovers: elimination among cases without a known phase, preferring compliant-looking cases
-        rest = [a for a in free if a["resource_id"] not in used_a]
+        rest = [a for a in free if a["resource_id"] not in used_a and a["event_type"] == "ANONYMIZE_RECORD"]
         need = [c for c in cases if id(c) not in used_c and phases[c.req["case_id"]] is None
                 and not any(r.startswith("analytics_") and r in c.direct for r in c.direct)]
         rest.sort(key=lambda a: a["_t"])
@@ -473,6 +481,8 @@ class Auditor:
                 same = [o for o in fresh if self.effective_state(cat, o) == state]
                 cited = [o for o in same if o.file_time <= audit_at] or same
                 ev = max(cited, key=lambda o: (o.time, o.file_time)).evidence_id
+            elif rid in c.policy_claims and cat == "LEGAL_HOLD_RECORD":
+                state, ev = "PRESENT", c.policy_claims[rid]["activity_id"]
             elif rid == c.primary_account:
                 state = "ABSENT"
                 ev = batch_files[0] if batch_files else self.snapshot_absence_evidence(rid, audit_at)
