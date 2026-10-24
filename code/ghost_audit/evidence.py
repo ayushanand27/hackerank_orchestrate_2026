@@ -213,6 +213,9 @@ def parse_json(eid, ftime, path) -> list[Observation]:
     if "snapshots" in d:
         for s in d["snapshots"]:
             coll = s.get("collection", "")
+            if coll != "operational_record_history" and s.get("data_store") and s.get("data_store") != "support_platform":
+                COVERAGE.append(Coverage(eid, ftime, s.get("captured_at") or ftime, s["data_store"],
+                                         {r.get("resource_id") for r in s.get("records", [])}))
             for rec in s.get("records", []):
                 if coll == "operational_record_history" or ("record_type" in rec and "result" in rec):
                     out.append(lookup_obs(eid, ftime, rec, "lookup", s.get("data_store", "")))
@@ -369,6 +372,7 @@ def parse_sql(eid, ftime, path) -> list[Observation]:
     cap = m.group(1) if m else ftime
     topo = re.search(r"Database topology:\s*(\S+)", sql)
     out = []
+    sql_seen: dict = {}
     for t in tables:
         if t == "snapshot_scope":
             continue
@@ -394,13 +398,16 @@ def parse_sql(eid, ftime, path) -> list[Observation]:
                 if t == "backup_restore_entries":
                     o.state = "ACTIVE" if rec.get("restore_allowed") in (1, "1") else "BLOCKED"
             o.table = t
+            sql_seen.setdefault(o.system, set()).add(o.resource_id)
             o.extra["topology"] = topo.group(1) if topo else ""
             sys_scope = scope.get(o.system)
             o.extra["scope_time"] = sys_scope or cap
             # snapshot time of the capture is what the state refers to
             o.time = sys_scope or cap
             out.append(o)
-        # absence knowledge: a table snapshot lists *all* rows of its scope
+    # absence knowledge: a snapshot lists *all* rows of the systems in its scope
+    for system in set(scope) | {k for k in sql_seen if k}:
+        COVERAGE.append(Coverage(eid, ftime, scope.get(system) or cap, system, sql_seen.get(system, set())))
     con.close()
     return out
 
@@ -455,6 +462,20 @@ def image_text(path, cache_dir=None) -> str:
 
 
 @dataclass
+class Coverage:
+    """A complete point-in-time listing of one system: anything of that system that is not
+    listed was absent at ``time`` (used for absence-by-omission)."""
+    evidence_id: str
+    file_time: str
+    time: str
+    system: str
+    resource_ids: set
+
+
+COVERAGE: list = []
+
+
+@dataclass
 class Document:
     evidence_id: str
     file_time: str
@@ -487,6 +508,7 @@ def load_manifest(dataset_dir) -> list[dict]:
 
 
 def load_all(dataset_dir, cache_dir=None) -> tuple[list[Observation], list[Document]]:
+    COVERAGE.clear()
     obs: list[Observation] = []
     docs: list[Document] = []
     for m in load_manifest(dataset_dir):

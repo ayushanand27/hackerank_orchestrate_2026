@@ -19,11 +19,13 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 
-from .evidence import Observation, load_all, system_for, RESOURCE_RE, EMAIL_RE, USER_RE
+from .evidence import Observation, load_all, system_for, RESOURCE_RE, EMAIL_RE, USER_RE, COVERAGE
 from .identity import IdentityIndex, Subject
 from .intent import classify
 from .policy import load_rules, required_action, order_steps
 
+DELETE_CATS = {"USER_PROFILE", "SECONDARY_IDENTIFIER", "SEARCH_INDEX_ENTRY", "CACHE_ENTRY", "SUPPORT_ATTACHMENT",
+               "USER_EXPORT", "MARKETING_PROFILE"}
 STATUS_RESULT = {"COMPLETE": "SUCCESS", "PARTIALLY_COMPLETE": "PARTIAL", "NOT_STARTED": "FAILED"}
 
 
@@ -54,6 +56,7 @@ class Auditor:
         self.idx = IdentityIndex(dataset_dir)
         self.rules = load_rules(dataset_dir)
         self.obs, self.docs = load_all(dataset_dir, cache_dir)
+        self.coverage = list(COVERAGE)
         self.activities = list(csv.DictReader(open(os.path.join(dataset_dir, "system_activity.csv"), encoding="utf-8")))
         for a in self.activities:
             a["_t"] = ts(a["event_time"])
@@ -341,57 +344,73 @@ class Auditor:
         todo.remove(c)
         free.remove(a)
 
+    # A case's follow-up policy actions inherit the seconds-of-minute phase of its primary-profile
+    # submission (anonymise/disable ~ +40 s, redact/block ~ +10 s).  This ties identifier-free
+    # records (anonymised analytics) to exactly one case.
+    PHASE = {"ANONYMIZE_RECORD": 40.5, "DISABLE_DATA_FLOW": 39.5, "REDACT_RECORD": 10, "BLOCK_RESTORE": 9}
+
+    def _case_phase(self, c: CaseContext):
+        acct = c.primary_account
+        if not acct:
+            return None
+        for a in self.activities:
+            if a["resource_id"] == acct and "submitted primary profile" in a["details"]:
+                return a["_t"].second
+        return None
+
+    @staticmethod
+    def _circ(a: float, b: float) -> float:
+        d = (a - b) % 60
+        return min(d, 60 - d)
+
     def _attribute_policy_actions(self, R: datetime, cases: list[CaseContext]):
         """'Policy action completed' events (~7-29 min before the report) confirm already-compliant
-        copies.  Identifier-free ones (anonymised analytics) are tied to a case through the
-        per-case timing signature shared with its identifier-bearing policy actions."""
+        copies.  Identifier-free ones are attributed by the case's timing phase."""
         acts = [a for a in self.activities
                 if "Policy action completed" in a["details"] and -35 <= (a["_t"] - R).total_seconds() / 60 <= 0]
         if not acts:
             return
-        sig: dict[str, int] = {}
+        owned = lambda rid: any(rid in k.direct for k in self.ctx.values() if k.deletion)
+        free = [a for a in acts if a["event_type"] == "ANONYMIZE_RECORD" and not owned(a["resource_id"])]
+        phases = {}
         for c in cases:
-            for a in acts:
-                if a["resource_id"] in c.direct:
-                    s = a["_t"].second
-                    et = a["event_type"]
-                    if et == "ANONYMIZE_RECORD" or a["target_system"] == "identity_service":
-                        sig[c.req["case_id"]] = s
-                    elif et == "DISABLE_DATA_FLOW":
-                        sig[c.req["case_id"]] = (s + 1) % 60
-                    elif et == "REDACT_RECORD":
-                        sig[c.req["case_id"]] = (s - 29) % 60
-                    elif et == "BLOCK_RESTORE":
-                        sig[c.req["case_id"]] = (s - 28) % 60
-        free = [a for a in acts if a["event_type"] == "ANONYMIZE_RECORD"
-                and not any(a["resource_id"] in k.direct for k in self.ctx.values() if k.deletion)]
-        need = []
+            ph = self._case_phase(c)
+            if ph is None:
+                # fall back to the phase implied by the case's own identifier-bearing policy actions
+                for a in acts:
+                    if a["resource_id"] in c.direct and a["event_type"] in self.PHASE:
+                        ph = (a["_t"].second - self.PHASE[a["event_type"]]) % 60
+                        break
+            phases[c.req["case_id"]] = ph
+        pairs = []
         for c in cases:
-            if any(r.startswith("analytics_") and r in c.direct for r in c.direct):
-                continue
-            need.append(c)
-        # signature match
-        for c in list(need):
-            s = sig.get(c.req["case_id"])
-            if s is None:
+            ph = phases[c.req["case_id"]]
+            if ph is None or any(r.startswith("analytics_") and r in c.direct for r in c.direct):
                 continue
             for a in free:
-                if min((a["_t"].second - s) % 60, (s - a["_t"].second) % 60) <= 1:
-                    c.attributed[a["resource_id"]].add("policy-signature:" + a["activity_id"])
-                    free.remove(a)
-                    need.remove(c)
-                    break
-        # elimination / order: only cases whose visible evidence actually shows the record;
-        # cases already known to be non-compliant never list compliant copies, so try others first
-        free.sort(key=lambda a: a["_t"])
+                d = self._circ(a["_t"].second, (ph + self.PHASE["ANONYMIZE_RECORD"]) % 60)
+                if d <= 1.5:
+                    pairs.append((d, c, a))
+        pairs.sort(key=lambda x: (x[0], rid_num(x[1].req["case_id"])))
+        used_c, used_a = set(), set()
+        for d, c, a in pairs:
+            if id(c) in used_c or a["resource_id"] in used_a:
+                continue
+            used_c.add(id(c))
+            used_a.add(a["resource_id"])
+            c.attributed[a["resource_id"]].add("policy-phase:" + a["activity_id"])
+        # leftovers: elimination among cases without a known phase, preferring compliant-looking cases
+        rest = [a for a in free if a["resource_id"] not in used_a]
+        need = [c for c in cases if id(c) not in used_c and phases[c.req["case_id"]] is None
+                and not any(r.startswith("analytics_") and r in c.direct for r in c.direct)]
+        rest.sort(key=lambda a: a["_t"])
         need.sort(key=lambda c: (self._prelim_violation(c), rid_num(c.req["case_id"])))
-        for a in list(free):
+        for a in rest:
             for c in need:
                 vis = [o for o in self.by_resource.get(a["resource_id"], []) if o.time <= c.req["audit_at"]]
                 if vis:
                     c.attributed[a["resource_id"]].add("policy-order:" + a["activity_id"])
                     need.remove(c)
-                    free.remove(a)
                     break
 
     def _prelim_violation(self, c: CaseContext) -> bool:
@@ -442,6 +461,8 @@ class Auditor:
                 if o.system:
                     system = o.system
             cat = self.resolve_category(rid, cat, cands, audit_at)
+            if required_action(self.rules, cat) != "RETAIN" and cat not in ("DATA_FLOW", "BACKUP_ARCHIVE"):
+                cands = cands + self.omission_absences(rid, system, c.req["requested_at"], audit_at, set(batch_files))
             # the audit concerns the state *after* the request; retained records persist anyway
             fresh = [o for o in cands if o.time >= c.req["requested_at"]
                      or cat in ("SECURITY_AUDIT_LOG", "LEGAL_HOLD_RECORD")]
@@ -460,6 +481,17 @@ class Auditor:
             views[rid] = dict(system=system, category=cat, state=state, evidence=ev)
         dbg["views"] = views
         return self.plan(c, views)
+
+    def omission_absences(self, rid: str, system: str, start: str, end: str, files: set) -> list[Observation]:
+        """Complete snapshots of `system` taken in [start, end] that do not list `rid`.  Only the
+        case's own evidence batch (files that carry its identifiers) counts as complete for it."""
+        out = []
+        for cv in self.coverage:
+            if cv.evidence_id in files and cv.system == system and start <= cv.time <= end and rid not in cv.resource_ids:
+                o = Observation(evidence_id=cv.evidence_id, file_time=cv.file_time, time=cv.time,
+                                resource_id=rid, system=system, state="ABSENT", kind="omission")
+                out.append(o.finish())
+        return out
 
     def batch_evidence(self, c: CaseContext) -> list[str]:
         """Evidence files (captured in time) that carry the case's own identifiers, most-used first."""
@@ -591,6 +623,8 @@ class Auditor:
         has_ref = bool(o.pii.get("user_ref"))
         if st in ("ABSENT", "ACTIVE", "DISABLED", "BLOCKED"):
             return st
+        if category in DELETE_CATS:
+            return "PRESENT"          # any surviving copy of a delete-category record is "present"
         if category in ("SUPPORT_MESSAGE", "ACCOUNT_TOMBSTONE", "EMAIL_DELIVERY_LOG"):
             if st == "IDENTIFIABLE":
                 return "IDENTIFIABLE"
