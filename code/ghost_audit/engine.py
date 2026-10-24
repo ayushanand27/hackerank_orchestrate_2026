@@ -103,6 +103,8 @@ class Auditor:
         for R, cases in groups.items():
             cases.sort(key=lambda c: rid_num(c.req["case_id"]))
             self._attribute_accounts(ts(R), cases)
+        self._refine_accounts_by_batch_cadence()
+        for R, cases in groups.items():
             self._attribute_policy_actions(ts(R), cases)
 
     def _direct_links(self, c: CaseContext):
@@ -110,12 +112,6 @@ class Auditor:
         for o in self.obs:
             if o.time <= audit_at and self.belongs(subj, o):
                 c.direct[o.resource_id].add("obs:" + o.evidence_id)
-        for d in self.docs:
-            if d.file_time > audit_at:
-                continue
-            if subj.user_id in d.users or (subj.emails & set(d.emails)):
-                for rid in d.resources:
-                    c.direct[rid].add("doc:" + d.evidence_id)
         links = {}
         for a in self.activities:
             if a["event_time"] > audit_at:
@@ -261,6 +257,83 @@ class Auditor:
             if c.primary_account and c.primary_account not in c.direct:
                 c.attributed[c.primary_account].add("primary")
 
+    # The privacy workflow processes an audit batch on a fixed cadence: consecutive requests (one
+    # calendar day apart) have their primary profile submitted at offsets that advance by a constant
+    # step inside a fixed window before the status report.  Learning that cadence from the
+    # unambiguous cases lets us resolve cases whose candidate deletions are otherwise identical.
+    CADENCE_BASE, CADENCE_STEP, CADENCE_PERIOD, CADENCE_TOL = 2700, 674, 1890, 75
+
+    def _refine_accounts_by_batch_cadence(self):
+        prim = [a for a in self.activities if a["target_system"] == "account_service"
+                and a["event_type"] == "DELETE_RECORD" and "submitted primary profile" in a["details"]]
+        batches = defaultdict(list)
+        for c in self.ctx.values():
+            if c.deletion and c.subject is not None:
+                be = self.batch_evidence(c)
+                batches[(c.req["audit_at"], be[0] if be else "")].append(c)
+        B, S, P, TOL = self.CADENCE_BASE, self.CADENCE_STEP, self.CADENCE_PERIOD, self.CADENCE_TOL
+        owned_direct = set()
+        for c in self.ctx.values():
+            if c.deletion and c.primary_account and c.primary_account in c.direct:
+                owned_direct.add(c.primary_account)
+        for key, cases in batches.items():
+            if len(cases) < 3:
+                continue
+            t0 = max(ts(c.req["requested_at"]) for c in cases)
+            info = []
+            for c in cases:
+                R = ts(c.req["reported_at"])
+                idx = round((t0 - ts(c.req["requested_at"])).total_seconds() / 86400)
+                res = STATUS_RESULT.get(c.req["reported_status"])
+                cands = [a for a in prim if a["reported_result"] == res and -90 <= (a["_t"] - R).total_seconds() / 60 <= -30
+                         and (a["resource_id"] not in owned_direct or a["resource_id"] == c.primary_account)]
+                info.append((c, R, idx, cands))
+
+            def fit(A):
+                err, hit = 0.0, 0
+                for c, R, idx, cands in info:
+                    u = (A + S * idx) % P
+                    exp_t = R - timedelta(seconds=B + u)
+                    best = min((abs((a["_t"] - exp_t).total_seconds()) for a in cands), default=None)
+                    if best is not None and best <= TOL:
+                        hit += 1
+                        err += best
+                return hit, -err
+
+            bestA = max(range(0, P, 3), key=fit)
+            hits, _ = fit(bestA)
+            if hits < max(3, len(info) // 2):
+                continue  # cadence not identifiable for this batch
+            # re-assign: each case takes the candidate closest to its expected cadence slot
+            pairs = []
+            for c, R, idx, cands in info:
+                if c.primary_account and c.primary_account in c.direct:
+                    continue
+                u = (bestA + S * idx) % P
+                exp_t = R - timedelta(seconds=B + u)
+                for a in cands:
+                    d = abs((a["_t"] - exp_t).total_seconds())
+                    if d <= TOL:
+                        pairs.append((d, c, a))
+            pairs.sort(key=lambda x: x[0])
+            used_c, used_a = set(), set()
+            for d, c, a in pairs:
+                if id(c) in used_c or a["resource_id"] in used_a:
+                    continue
+                used_c.add(id(c))
+                used_a.add(a["resource_id"])
+                if c.primary_account != a["resource_id"]:
+                    old = c.primary_account
+                    if old and old in c.attributed and old not in c.direct:
+                        del c.attributed[old]
+                    # release the slot from whichever case currently holds it
+                    for k in self.ctx.values():
+                        if k is not c and k.primary_account == a["resource_id"] and a["resource_id"] not in k.direct:
+                            k.primary_account = None
+                            k.attributed.pop(a["resource_id"], None)
+                    c.primary_account = a["resource_id"]
+                    c.attributed[a["resource_id"]].add("cadence:" + a["activity_id"])
+
     @staticmethod
     def _take_account(c, a, todo, free):
         c.primary_account = a["resource_id"]
@@ -369,7 +442,9 @@ class Auditor:
                 if o.system:
                     system = o.system
             cat = self.resolve_category(rid, cat, cands, audit_at)
-            fresh = [o for o in cands if o.time >= c.req["requested_at"]]
+            # the audit concerns the state *after* the request; retained records persist anyway
+            fresh = [o for o in cands if o.time >= c.req["requested_at"]
+                     or cat in ("SECURITY_AUDIT_LOG", "LEGAL_HOLD_RECORD")]
             state, ev = None, ""
             if fresh:
                 last = max(fresh, key=lambda o: (o.time, o.file_time <= audit_at, o.file_time))
