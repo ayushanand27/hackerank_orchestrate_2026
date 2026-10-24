@@ -277,3 +277,22 @@ branch=main
 repo_root=/home/claude/hackerank_orchestrate_2026
 worktree=main
 parent_agent=none
+
+## [2026-10-25T01:50:00+05:30] User opened browser settings instead of Claude settings
+
+User Prompt (verbatim, secrets redacted):
+[Pasted text of the Microsoft Edge browser Settings page (Profiles, Privacy search and services, About Microsoft Edge version info, sync profile e-mail REDACTED) - 11 search results for "privacy"]
+
+Agent Response Summary:
+Pointed out that the pasted page is the Edge browser's own settings, not Claude's. Explained that the export option lives inside claude.ai (Settings > Privacy > Export data) and must be opened from the claude.ai site or the Claude desktop app.
+
+Actions:
+* none (guidance only)
+
+Context:
+tool=Claude (claude.ai app, Claude Code-based cloud agent)
+model=claude-opus-5-5
+branch=main
+repo_root=/home/claude/hackerank_orchestrate_2026
+worktree=main
+parent_agent=none
