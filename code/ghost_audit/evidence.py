@@ -12,7 +12,10 @@ Supported families
 * ``logs/*.log``      – service traces in many layouts (see ``logparse``)
 * ``databases/*.sql`` – SQLite snapshots incl. primary / replica tables
 * ``documents/*.pdf`` – business documents (text extracted with pdftotext/pypdf)
-* ``images/*.png``    – console screenshots (OCR via Tesseract; optional VLM)
+* ``images/*.png``    – console screenshots (local OCR via Tesseract, cached)
+
+Complete listings (a SQL snapshot of a system, a snapshot-bundle collection) are also recorded
+as :class:`Coverage`, which later allows "absent because not listed" reasoning.
 """
 from __future__ import annotations
 
@@ -23,8 +26,6 @@ import re
 import sqlite3
 import subprocess
 from dataclasses import dataclass, field
-from typing import Iterable
-
 from .logparse import parse_line
 
 # --------------------------------------------------------------------------
@@ -123,9 +124,6 @@ RESULT_STATE = {
     "DELETED": "ABSENT",
 }
 
-CATEGORY_ALIASES = {"DATA_FLOW": "DATA_FLOW"}
-
-
 def lookup_obs(eid, ftime, rec, kind, table="") -> Observation:
     """Record-lookup rows: {recorded_at, system, resource_id, record_type, result, subject_reference}"""
     ref = nn(rec.get("subject_reference")) or nn(rec.get("lookup_value"))
@@ -204,17 +202,31 @@ def snapshot_obs(eid, ftime, t, rec: dict, system=None, collection="", kind="sna
     return o
 
 
+@dataclass
+class Coverage:
+    """A complete point-in-time listing of one system: anything of that system that is not
+    listed was absent at ``time`` (used for absence-by-omission)."""
+    evidence_id: str
+    file_time: str
+    time: str
+    system: str
+    resource_ids: set
+
+
 # --------------------------------------------------------------------------
 # File-family adapters
 # --------------------------------------------------------------------------
-def parse_json(eid, ftime, path) -> list[Observation]:
-    d = json.load(open(path, encoding="utf-8"))
+def parse_json(eid, ftime, path, coverage: list | None = None) -> list[Observation]:
+    """Snapshot bundles, service exports and record-lookup exports."""
+    coverage = [] if coverage is None else coverage
+    with open(path, encoding="utf-8") as fh:
+        d = json.load(fh)
     out: list[Observation] = []
     if "snapshots" in d:
         for s in d["snapshots"]:
             coll = s.get("collection", "")
             if coll != "operational_record_history" and s.get("data_store") and s.get("data_store") != "support_platform":
-                COVERAGE.append(Coverage(eid, ftime, s.get("captured_at") or ftime, s["data_store"],
+                coverage.append(Coverage(eid, ftime, s.get("captured_at") or ftime, s["data_store"],
                                          {r.get("resource_id") for r in s.get("records", [])}))
             for rec in s.get("records", []):
                 if coll == "operational_record_history" or ("record_type" in rec and "result" in rec):
@@ -241,8 +253,11 @@ HANDOVER_RE = re.compile(
 
 
 def parse_txt(eid, ftime, path) -> list[Observation]:
+    """Shift hand-over notes: ``- time | system | resource | record_type | result | reference``."""
     out = []
-    for line in open(path, encoding="utf-8"):
+    with open(path, encoding="utf-8") as fh:
+        lines = fh.readlines()
+    for line in lines:
         m = HANDOVER_RE.match(line.strip())
         if not m:
             continue
@@ -303,8 +318,6 @@ def _log_state(ev: str, r: dict) -> tuple[str | None, str | None]:
         return ("PRESENT" if r.get("available") == "true" else "ABSENT"), None
     if ev == "retained_order_loaded":
         return "PRESENT", "LEGAL_HOLD_RECORD"
-    if ev == "deletion_marker_check":
-        return None, None
     return None, None
 
 
@@ -313,7 +326,10 @@ SKIP_EVENTS = {"connection_acquired", "dependency_retry", "dependency_recovered"
 
 
 def parse_log(eid, ftime, path) -> list[Observation]:
-    recs = [r for r in (parse_line(l) for l in open(path, encoding="utf-8")) if r]
+    """Service traces.  The lookup key is logged on the *start* line of a trace and the outcome on
+    the *completion* line, so keys are joined through the trace id."""
+    with open(path, encoding="utf-8") as fh:
+        recs = [r for r in (parse_line(line) for line in fh) if r]
     trace_keys: dict[str, set] = {}
     for r in recs:
         tr = r.get("trace") or r.get("trace_id")
@@ -359,9 +375,13 @@ def parse_log(eid, ftime, path) -> list[Observation]:
     return out
 
 
-def parse_sql(eid, ftime, path) -> list[Observation]:
+def parse_sql(eid, ftime, path, coverage: list | None = None) -> list[Observation]:
+    """SQLite snapshot exports.  Every table row becomes an observation dated at the snapshot time
+    of its system (``snapshot_scope``); each system in scope is recorded as complete coverage."""
+    coverage = [] if coverage is None else coverage
     con = sqlite3.connect(":memory:")
-    sql = open(path, encoding="utf-8").read()
+    with open(path, encoding="utf-8") as fh:
+        sql = fh.read()
     con.executescript(sql)
     cur = con.cursor()
     tables = [r[0] for r in cur.execute("select name from sqlite_master where type='table'")]
@@ -386,8 +406,6 @@ def parse_sql(eid, ftime, path) -> list[Observation]:
                 coll = rec.get("collection_name", "")
                 o = snapshot_obs(eid, ftime, rec.get("updated_at") or cap, inner, system, coll, "sql")
             else:
-                if "source_resource_id" in rec:
-                    rec = dict(rec)
                 system = None
                 o = snapshot_obs(eid, ftime, rec.get("updated_at") or rec.get("indexed_at") or cap, rec,
                                  system, t, "sql")
@@ -407,7 +425,7 @@ def parse_sql(eid, ftime, path) -> list[Observation]:
             out.append(o)
     # absence knowledge: a snapshot lists *all* rows of the systems in its scope
     for system in set(scope) | {k for k in sql_seen if k}:
-        COVERAGE.append(Coverage(eid, ftime, scope.get(system) or cap, system, sql_seen.get(system, set())))
+        coverage.append(Coverage(eid, ftime, scope.get(system) or cap, system, sql_seen.get(system, set())))
     con.close()
     return out
 
@@ -427,14 +445,20 @@ def pdf_text(path) -> str:
             return ""
 
 
-def image_text(path, cache_dir=None) -> str:
-    """OCR an image (upscaled, both polarities) with Tesseract; cached on disk."""
+def image_text(path, cache_dir=None, stats: dict | None = None) -> str:
+    """OCR an image (2x upscaled grayscale, normal and inverted polarity) with Tesseract.
+
+    Dark-theme consoles OCR badly in one polarity and well in the other, so both are read and
+    concatenated.  The text is cached on disk, which makes later runs independent of Tesseract."""
+    stats = {} if stats is None else stats
     cache = None
     if cache_dir:
         os.makedirs(cache_dir, exist_ok=True)
         cache = os.path.join(cache_dir, os.path.basename(path) + ".ocr.txt")
         if os.path.exists(cache):
-            return open(cache, encoding="utf-8").read()
+            stats["ocr_cache_hits"] = stats.get("ocr_cache_hits", 0) + 1
+            with open(cache, encoding="utf-8") as fh:
+                return fh.read()
     texts = []
     try:
         from PIL import Image, ImageOps
@@ -447,32 +471,21 @@ def image_text(path, cache_dir=None) -> str:
                 v.save(tf.name)
                 r = subprocess.run(["tesseract", tf.name, "-", "--psm", "11"], capture_output=True,
                                    text=True, timeout=120)
+                stats["ocr_calls"] = stats.get("ocr_calls", 0) + 1
                 texts.append(r.stdout)
                 os.unlink(tf.name)
     except Exception:
         try:
             r = subprocess.run(["tesseract", path, "-"], capture_output=True, text=True, timeout=120)
+            stats["ocr_calls"] = stats.get("ocr_calls", 0) + 1
             texts.append(r.stdout)
         except Exception:
             pass
     text = "\n".join(texts)
     if cache:
-        open(cache, "w", encoding="utf-8").write(text)
+        with open(cache, "w", encoding="utf-8") as fh:
+            fh.write(text)
     return text
-
-
-@dataclass
-class Coverage:
-    """A complete point-in-time listing of one system: anything of that system that is not
-    listed was absent at ``time`` (used for absence-by-omission)."""
-    evidence_id: str
-    file_time: str
-    time: str
-    system: str
-    resource_ids: set
-
-
-COVERAGE: list = []
 
 
 @dataclass
@@ -487,8 +500,9 @@ class Document:
     users: list = field(default_factory=list)
 
 
-def scan_document(eid, ftime, path, kind, cache_dir=None) -> Document:
-    text = pdf_text(path) if kind == "pdf" else image_text(path, cache_dir)
+def scan_document(eid, ftime, path, kind, cache_dir=None, stats: dict | None = None) -> Document:
+    """Extract text, then spot resource ids, e-mails and user ids in it."""
+    text = pdf_text(path) if kind == "pdf" else image_text(path, cache_dir, stats)
     # OCR repairs for identifiers: "search 1874" -> search_1874, "data_flow.1121" -> data_flow_1121
     norm = re.sub(r"\b(data[_ ]flow|audit[_ ]record|account|search|support|analytics|export|backup|"
                   r"marketing|tombstone|object)[ ._](\d+)\b",
@@ -503,33 +517,52 @@ def scan_document(eid, ftime, path, kind, cache_dir=None) -> Document:
 # --------------------------------------------------------------------------
 # Loader
 # --------------------------------------------------------------------------
+@dataclass
+class EvidenceStore:
+    """Everything extracted from ``dataset/evidence`` (via the ``evidence_files.csv`` manifest)."""
+    observations: list
+    documents: list
+    coverage: list
+    stats: dict = field(default_factory=dict)
+
+
 def load_manifest(dataset_dir) -> list[dict]:
-    return list(csv.DictReader(open(os.path.join(dataset_dir, "evidence_files.csv"), encoding="utf-8")))
+    with open(os.path.join(dataset_dir, "evidence_files.csv"), encoding="utf-8") as fh:
+        return list(csv.DictReader(fh))
 
 
-def load_all(dataset_dir, cache_dir=None) -> tuple[list[Observation], list[Document]]:
-    COVERAGE.clear()
-    obs: list[Observation] = []
-    docs: list[Document] = []
+FAMILY = {".json": "json", ".txt": "txt", ".log": "log", ".sql": "sql", ".pdf": "pdf",
+          ".png": "image", ".jpg": "image", ".jpeg": "image"}
+
+
+def load_all(dataset_dir, cache_dir=None) -> EvidenceStore:
+    store = EvidenceStore([], [], [], {"files": {}, "missing_files": 0, "parse_failures": 0})
+    obs, docs, coverage, stats = store.observations, store.documents, store.coverage, store.stats
     for m in load_manifest(dataset_dir):
         path = os.path.join(dataset_dir, m["file_path"])
         eid, ftime = m["file_id"], m["captured_at"]
         if not os.path.exists(path):
+            stats["missing_files"] += 1
             continue
-        ext = os.path.splitext(path)[1].lower()
+        family = FAMILY.get(os.path.splitext(path)[1].lower())
+        if family is None:
+            continue
+        stats["files"][family] = stats["files"].get(family, 0) + 1
         try:
-            if ext == ".json":
-                obs += parse_json(eid, ftime, path)
-            elif ext == ".txt":
+            if family == "json":
+                obs += parse_json(eid, ftime, path, coverage)
+            elif family == "txt":
                 obs += parse_txt(eid, ftime, path)
-            elif ext == ".log":
+            elif family == "log":
                 obs += parse_log(eid, ftime, path)
-            elif ext == ".sql":
-                obs += parse_sql(eid, ftime, path)
-            elif ext == ".pdf":
-                docs.append(scan_document(eid, ftime, path, "pdf", cache_dir))
-            elif ext in (".png", ".jpg", ".jpeg"):
-                docs.append(scan_document(eid, ftime, path, "image", cache_dir))
+            elif family == "sql":
+                obs += parse_sql(eid, ftime, path, coverage)
+            else:
+                docs.append(scan_document(eid, ftime, path, family, cache_dir, stats))
         except Exception as exc:  # keep going on a malformed artifact
+            stats["parse_failures"] += 1
             print(f"[warn] failed to parse {path}: {exc}")
-    return obs, docs
+    stats["observations"] = len(obs)
+    stats["documents"] = len(docs)
+    stats["coverage_listings"] = len(coverage)
+    return store

@@ -1,15 +1,14 @@
 """Request-intent classification: does the request text authorise deletion?
 
-Two layers:
-1. A deterministic multilingual rule classifier (always on, zero cost).
-2. An optional LLM adjudicator (``GHOST_AUDIT_LLM=1``) consulted only when the
-   rule layer is not confident.  See ``llm.py``.
+A deterministic multilingual rule classifier (no model calls).  It looks for an explicit
+erasure verb about the account / personal data, and for signals that the person asked for
+something else (access, portability, correction, marketing opt-out, login help) or explicitly
+said "do not delete".
 
-The rule layer looks for an explicit erasure verb about the account / personal
-data, and for signals that the person asked for something else (access,
-portability, correction, marketing opt-out, login help) or explicitly said
-"do not delete".  Negative signals win over a bare verb such as "remove me from
-marketing lists" which is an opt-out, not an erasure.
+Precedence:
+1. an explicit refusal ("not asking for deletion", "keep my account active") always wins;
+2. otherwise an erasure cue authorises deletion (also when another action is mentioned);
+3. otherwise a recognised non-erasure action, or no cue at all, means NOT_APPLICABLE.
 """
 from __future__ import annotations
 

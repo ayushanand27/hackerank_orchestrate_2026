@@ -17,12 +17,14 @@ DEFAULT_ACTIONS = {
 def load_rules(dataset_dir: str) -> dict[str, dict]:
     rules = {}
     path = os.path.join(dataset_dir, "deletion_rules.csv")
-    for r in csv.DictReader(open(path, encoding="utf-8")):
-        rules[r["data_category"]] = r
+    with open(path, encoding="utf-8") as fh:
+        for r in csv.DictReader(fh):
+            rules[r["data_category"]] = r
     return rules
 
 
 def required_action(rules: dict, category: str) -> str:
+    """DELETE / REDACT / ANONYMIZE / RETAIN for a data category (deletion_rules.csv wins)."""
     r = rules.get(category)
     if r:
         return r["required_action"].strip().upper()
@@ -49,13 +51,16 @@ OP_PHASE = {op: ("FINDING" if op.startswith("REPORT") else "VERIFICATION" if op.
             for op in OP_STATE}
 
 
-def _id_key(resource_id: str):
-    return resource_id
+def step_sort_key(s: dict) -> tuple:
+    """FINDING -> REMEDIATION -> VERIFICATION; inside a phase the operation-table order (so flows
+    are disabled and restores blocked before records are deleted / redacted / anonymised), then
+    system_id and resource_id for a deterministic order."""
+    return PHASE_ORDER[s["phase"]], OP_RANK[s["operation"]], s["system_id"], s["resource_id"]
 
 
 def order_steps(steps: list[dict]) -> list[dict]:
-    steps = sorted(steps, key=lambda s: (PHASE_ORDER[s["phase"]], OP_RANK[s["operation"]], s["system_id"],
-                                         _id_key(s["resource_id"])))
+    """Sort, number from 1 and fill in the state implied by each operation."""
+    steps = sorted(steps, key=step_sort_key)
     out = []
     for i, s in enumerate(steps, 1):
         out.append({"step_no": i, "phase": s["phase"], "system_id": s["system_id"], "resource_id": s["resource_id"],
