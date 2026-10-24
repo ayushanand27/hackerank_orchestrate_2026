@@ -157,7 +157,10 @@ class Auditor:
             chosen = {}
             for rid, (a, alias) in links.items():
                 al = re.sub(r"\.(pdf|zip|png|jpg)$", "", alias, flags=re.I)
-                if rid in d.resources or (len(self._squash(al)) >= 6 and self._squash(al) in text_sq):
+                # the catalogue registers an artifact shortly after it is captured
+                near = timedelta(0) <= a["_t"] - ts(d.file_time) <= timedelta(hours=2)
+                if (rid in d.resources and (near or mentions_subject)) or \
+                        (near and len(self._squash(al)) >= 6 and self._squash(al) in text_sq):
                     chosen[rid] = "link"
             if mentions_subject:
                 by_type = defaultdict(list)
