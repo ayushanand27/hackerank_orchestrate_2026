@@ -16,6 +16,7 @@ def case_sort_key(cid: str):
 
 
 def serialize_steps(steps: list[dict]) -> str:
+    """Compact JSON (no spaces, UTF-8 kept) for the steps_json column."""
     return json.dumps(steps, separators=(",", ":"), ensure_ascii=False)
 
 

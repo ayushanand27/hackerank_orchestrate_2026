@@ -37,16 +37,19 @@ import usage  # noqa: E402
 
 
 def read_csv(path: str) -> list[dict]:
+    """Rows of a CSV file as dicts."""
     with open(path, encoding="utf-8") as fh:
         return list(csv.DictReader(fh))
 
 
 def fmt_summary(name: str, s: dict) -> str:
+    """Metrics dict -> Markdown table."""
     rows = [f"| {k} | {v:.4f} |" if isinstance(v, float) else f"| {k} | {v} |" for k, v in s.items()]
     return f"#### {name}\n\n| metric | value |\n|---|---|\n" + "\n".join(rows) + "\n"
 
 
 def per_case_table(res: dict) -> str:
+    """Per-case comparison (expected vs predicted, missing / extra steps) as Markdown."""
     out = ["| case | expected | predicted | exact | missing steps | extra steps |", "|---|---|---|---|---|---|"]
     for cid, pc in res["per_case"].items():
         miss = "<br>".join(f"{m[3]} {m[2]} ({m[5] or '-'})" for m in pc["missing"]) or ""
@@ -56,6 +59,7 @@ def per_case_table(res: dict) -> str:
 
 
 def main(argv=None):
+    """Run sample metrics, custom scenarios and the contract check; write latest_metrics.md and usage_report.md."""
     ap = argparse.ArgumentParser()
     ap.add_argument("--dataset", default=os.path.join(REPO, "dataset"))
     ap.add_argument("--output", default=os.path.join(REPO, "output.csv"))

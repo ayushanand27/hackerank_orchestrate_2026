@@ -26,7 +26,7 @@ python3 code/main.py --explain case_44        # reasoning trail for one case
 python3 code/evaluation/main.py               # sample + custom metrics, contract check, usage report
 python3 code/evaluation/ablation.py           # strategy comparison (~2 min)
 python3 code/evaluation/consistency.py        # unsupervised check of the timing attribution
-python3 -m unittest discover -s code/tests    # 53 tests
+python3 -m unittest discover -s code/tests    # 57 tests
 ```
 
 System tools: `tesseract` (only for the 11 screenshots) and `pdftotext` (poppler; `pypdf` is

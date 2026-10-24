@@ -56,6 +56,7 @@ OTHER_ACTION_PATTERNS = [
 
 
 def _first_match(patterns: list[str], text: str) -> str | None:
+    """First phrase in ``text`` matched by any pattern, or ``None``."""
     for p in patterns:
         m = re.search(p, text)
         if m:

@@ -56,11 +56,13 @@ BUILD_UP = [
 
 
 def read(path):
+    """Rows of a CSV file as dicts."""
     with open(path, encoding="utf-8") as fh:
         return list(csv.DictReader(fh))
 
 
 def evaluate(features: Features, dataset: str, evidence, sample, test, expected, reference=None):
+    """Run the full pipeline with ``features``; return sample / custom / evaluation-set measurements."""
     t0 = time.perf_counter()
     auditor = Auditor(dataset, None, features=features, evidence=evidence)
     auditor.prepare(sample + test)
@@ -90,6 +92,7 @@ def evaluate(features: Features, dataset: str, evidence, sample, test, expected,
 
 
 def row(label, r):
+    """One Markdown table row for a configuration's results."""
     changed = "-" if r["changed"] is None else str(r["changed"])
     return (f"| {label} | {r['status']:.3f} | {r['exact']:.3f} | {r['f1']:.3f} | {r['field']:.3f} | "
             f"{r['seq']:.3f} | {r['custom']}/{r['custom_n']} | {changed} | {r['violations']} |")
@@ -100,6 +103,7 @@ HEADER = ("| configuration | status acc. | exact rows | step F1 | field acc. | s
 
 
 def main(argv=None):
+    """Run the build-up and leave-one-out configurations and write ablation.md."""
     ap = argparse.ArgumentParser()
     ap.add_argument("--dataset", default=os.path.join(REPO, "dataset"))
     ap.add_argument("--cache", default=os.path.join(CODE, ".cache"))

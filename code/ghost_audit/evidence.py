@@ -59,6 +59,7 @@ PHONE_RE = re.compile(r"\+\d[\d ()\-]{6,}\d")
 
 
 def system_for(resource_id: str) -> tuple[str | None, str | None]:
+    """(owning system, default category) implied by a resource-id prefix."""
     for pre, system, cat in PREFIX_SYSTEM:
         if resource_id.startswith(pre):
             return system, cat
@@ -86,6 +87,7 @@ PII_FIELDS = {
 
 @dataclass
 class Observation:
+    """One statement: at ``time`` file ``evidence_id`` saw ``resource_id`` in ``state`` with identifiers."""
     evidence_id: str
     file_time: str
     time: str
@@ -102,6 +104,7 @@ class Observation:
     extra: dict = field(default_factory=dict)
 
     def finish(self):
+        """Fill in system and category from the resource-id prefix when the source did not say."""
         if not self.system or not self.category:
             s, c = system_for(self.resource_id)
             self.system = self.system or s
@@ -110,6 +113,7 @@ class Observation:
 
 
 def add_pii(obs: Observation, rec: dict):
+    """Collect identifying fields of a record into ``obs.pii`` by kind (email, phone, name, ...)."""
     for k, v in rec.items():
         kind = PII_FIELDS.get(k)
         v = nn(v) if not isinstance(v, (dict, list)) else None
@@ -141,6 +145,7 @@ def lookup_obs(eid, ftime, rec, kind, table="") -> Observation:
 # Snapshot-record interpretation (fields present -> state)
 # --------------------------------------------------------------------------
 def snapshot_obs(eid, ftime, t, rec: dict, system=None, collection="", kind="snapshot") -> Observation:
+    """Interpret a snapshot / export record: the fields present decide the state."""
     rid = rec.get("resource_id")
     o = Observation(evidence_id=eid, file_time=ftime, time=t or ftime, resource_id=rid,
                     system=system, kind=kind, table=collection)
@@ -433,6 +438,7 @@ def parse_sql(eid, ftime, path, coverage: list | None = None) -> list[Observatio
 # Documents and images: text extraction then entity spotting
 # --------------------------------------------------------------------------
 def pdf_text(path) -> str:
+    """Text of a PDF via pdftotext (layout mode), falling back to pypdf."""
     try:
         return subprocess.run(["pdftotext", "-layout", path, "-"], capture_output=True, text=True,
                               timeout=60).stdout
@@ -489,6 +495,7 @@ def image_text(path, cache_dir=None, stats: dict | None = None) -> str:
 
 @dataclass
 class Document:
+    """A PDF or screenshot reduced to text plus the ids, e-mails and user ids spotted in it."""
     evidence_id: str
     file_time: str
     path: str
@@ -526,6 +533,7 @@ class EvidenceStore:
 
 
 def load_manifest(dataset_dir) -> list[dict]:
+    """Rows of ``evidence_files.csv``."""
     with open(os.path.join(dataset_dir, "evidence_files.csv"), encoding="utf-8") as fh:
         return list(csv.DictReader(fh))
 
@@ -535,6 +543,7 @@ FAMILY = {".json": "json", ".txt": "txt", ".log": "log", ".sql": "sql", ".pdf": 
 
 
 def load_all(dataset_dir, cache_dir=None) -> EvidenceStore:
+    """Parse every file in the manifest into observations, documents and coverage listings."""
     store = EvidenceStore([], [], [], {"files": {}, "missing_files": 0, "parse_failures": 0})
     obs, docs, coverage, stats = store.observations, store.documents, store.coverage, store.stats
     for m in load_manifest(dataset_dir):

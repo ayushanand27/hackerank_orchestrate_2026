@@ -7,11 +7,13 @@ FIELDS = ["phase", "system_id", "resource_id", "operation", "state", "evidence_i
 
 
 def step_key(s: dict, with_evidence=True) -> tuple:
+    """Comparable tuple of a step's fields (optionally without the evidence id)."""
     ks = FIELDS if with_evidence else FIELDS[:-1]
     return tuple(s.get(k, "") for k in ks)
 
 
 def lcs(a: list, b: list) -> int:
+    """Length of the longest common subsequence of two step lists (order-aware partial credit)."""
     n, m = len(a), len(b)
     dp = [[0] * (m + 1) for _ in range(n + 1)]
     for i in range(n):
@@ -56,6 +58,7 @@ def compare(expected: dict, predicted: dict) -> dict:
 
 
 def summary(res: dict) -> dict:
+    """Aggregate counts from :func:`compare` into accuracy / precision / recall / F1 ratios."""
     p = res["tp_steps"] / res["pred_steps"] if res["pred_steps"] else 0.0
     r = res["tp_steps"] / res["exp_steps"] if res["exp_steps"] else 0.0
     pn = res["tp_steps_noev"] / res["pred_steps"] if res["pred_steps"] else 0.0
@@ -73,6 +76,7 @@ def summary(res: dict) -> dict:
 
 
 def load_output_csv(path: str) -> dict:
+    """Read an output CSV into {case_id: (status, steps)}."""
     import csv
     out = {}
     with open(path, encoding="utf-8") as fh:

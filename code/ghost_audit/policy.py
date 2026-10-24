@@ -15,6 +15,7 @@ DEFAULT_ACTIONS = {
 
 
 def load_rules(dataset_dir: str) -> dict[str, dict]:
+    """deletion_rules.csv keyed by data category."""
     rules = {}
     path = os.path.join(dataset_dir, "deletion_rules.csv")
     with open(path, encoding="utf-8") as fh:

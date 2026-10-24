@@ -37,10 +37,12 @@ class Features:
     post_request_only: bool = True
 
     def without(self, *names: str) -> "Features":
+        """Copy of these switches with the named techniques turned off."""
         return replace(self, **{n: False for n in names})
 
     @classmethod
     def names(cls) -> list[str]:
+        """Names of all switches, in declaration order."""
         return [f.name for f in fields(cls)]
 
 

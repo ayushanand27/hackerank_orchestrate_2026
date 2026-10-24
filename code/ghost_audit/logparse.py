@@ -18,12 +18,14 @@ SYSLOG_RE = re.compile(r"^<\d+>\d+\s+(\S+)\s+(\S+)\s+(\S+)\s+-\s+-\s+(.*)$")
 
 
 def _unquote(v: str) -> str:
+    """Strip surrounding quotes and unescape a logfmt value."""
     if len(v) >= 2 and v[0] == '"' and v[-1] == '"':
         v = v[1:-1].replace('\\"', '"').replace("\\\\", "\\")
     return v
 
 
 def parse_kv(text: str) -> dict:
+    """All ``key=value`` / ``key=\"quoted value\"`` pairs of a string."""
     out = {}
     for k, v in KV_RE.findall(text):
         out[k] = _unquote(v)
@@ -31,6 +33,7 @@ def parse_kv(text: str) -> dict:
 
 
 def parse_line(line: str) -> dict | None:
+    """Normalise one log line of any supported layout; ``None`` for non-log lines."""
     m = TS_RE.match(line.strip())
     if not m:
         return None

@@ -13,19 +13,23 @@ from dataclasses import dataclass, field
 
 
 def norm_email(e: str) -> str:
+    """Trimmed, lower-cased e-mail."""
     return (e or "").strip().lower()
 
 
 def norm_phone(p: str) -> str:
+    """Digits only, so +44 (7700) 900-111 and 447700900111 compare equal."""
     return re.sub(r"\D", "", p or "")
 
 
 def email_hash(e: str) -> str:
+    """SHA-256 of the normalised e-mail."""
     return hashlib.sha256(norm_email(e).encode()).hexdigest()
 
 
 @dataclass
 class Subject:
+    """One person and every identifier they have used."""
     user_id: str
     name: str
     emails: set = field(default_factory=set)           # all, lower-case
@@ -54,9 +58,6 @@ class Subject:
             return len(d) >= 7 and d in self.phones
         return False
 
-    def audit_ids(self) -> list[str]:
-        return [h[4] for h in self.history]
-
     @classmethod
     def from_email(cls, email: str) -> "Subject":
         """Ad-hoc subject for a request e-mail that matches no known identity: the audit then
@@ -71,6 +72,7 @@ class IdentityIndex:
     ``historical=False`` ignores ``user_audit_log.csv`` (only used by the ablation study)."""
 
     def __init__(self, dataset_dir: str, historical: bool = True):
+        """Build the index from user_identities.csv (+ user_audit_log.csv when ``historical``)."""
         self.subjects: dict[str, Subject] = {}
         with open(os.path.join(dataset_dir, "user_identities.csv"), encoding="utf-8") as fh:
             ids = list(csv.DictReader(fh))
@@ -112,6 +114,7 @@ class IdentityIndex:
                 self.by_email.setdefault(e, set()).add(s.user_id)
 
     def resolve(self, email: str) -> Subject | None:
+        """Subject for a request e-mail (current or historical); the current owner wins for a reused address."""
         uids = self.by_email.get(norm_email(email), set())
         if not uids:
             return None

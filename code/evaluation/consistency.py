@@ -40,15 +40,18 @@ TOL = 2.0
 
 
 def agrees(second: int, phase: int) -> bool:
+    """Is ``second`` within tolerance of one of the policy-action slots for primary phase ``phase``?"""
     return any(circular_distance(second, (phase + 40 + POLICY_SLOT_ADVANCE_S * k) % 60) <= TOL for k in range(4))
 
 
 def read(path):
+    """Rows of a CSV file as dicts."""
     with open(path, encoding="utf-8") as fh:
         return list(csv.DictReader(fh))
 
 
 def main():
+    """Compute the consistency table for all requests and write consistency.md."""
     ds = os.path.join(REPO, "dataset")
     auditor = Auditor(ds, os.path.join(CODE, ".cache"))
     test = read(os.path.join(ds, "deletion_requests.csv"))

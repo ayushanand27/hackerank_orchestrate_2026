@@ -33,11 +33,13 @@ from .state import effective_state, resolve_category
 
 
 def is_primary_submission(a: dict) -> bool:
+    """Is activity ``a`` the deletion worker submitting a primary profile?"""
     return a["target_system"] == "account_service" and a["event_type"] == "DELETE_RECORD" \
         and "submitted primary profile" in a["details"]
 
 
 def in_window(t: datetime, ref: datetime, window: tuple) -> bool:
+    """Is ``t`` within ``window`` = (lo, hi) minutes of ``ref``?"""
     lo, hi = window
     return lo <= minutes_between(t, ref) <= hi
 
@@ -48,6 +50,7 @@ def owned_by_identifier(rid: str, all_cases: list[CaseContext]) -> bool:
 
 
 def expected_result(c: CaseContext) -> str | None:
+    """Worker result that mirrors the case's reported status (COMPLETE -> SUCCESS ...)."""
     return STATUS_RESULT.get(c.req["reported_status"])
 
 
@@ -59,10 +62,15 @@ def last_resort_account(data: AuditData, c: CaseContext) -> str | None:
     return accts[0] if len(accts) == 1 else None
 
 
+def assign_account(c: CaseContext, a: dict, tag: str):
+    """Make submission ``a`` the case's primary profile, recording why."""
+    c.primary_account = a["resource_id"]
+    c.attributed[a["resource_id"]].add(tag + a["activity_id"])
+
+
 # ----------------------------------------------------------------------------- 1. primary profile
-def attribute_primary_accounts(data: AuditData, R: datetime, cases: list[CaseContext],
-                               all_cases: list[CaseContext], features: Features):
-    """Assign a primary profile to every case of one reporting group (reported at ``R``)."""
+def candidate_events(data: AuditData, R: datetime, features: Features) -> tuple[list, list]:
+    """(primary-profile submissions, explicit target reports) around the report time ``R``."""
     primary, direct_report = [], []
     for a in data.activities:
         if is_primary_submission(a) and in_window(a["_t"], R, PRIMARY_WINDOW_MIN):
@@ -71,8 +79,11 @@ def attribute_primary_accounts(data: AuditData, R: datetime, cases: list[CaseCon
         elif "Target resource:" in a["details"] and in_window(a["_t"], R, DIRECT_REPORT_WINDOW_MIN) \
                 and a["event_type"] != "SYNC_RECORD":
             direct_report.append(a)
+    return primary, direct_report
 
-    # (a) workflow reports that name their target resource explicitly
+
+def take_reported_targets(direct_report: list, cases: list[CaseContext], all_cases: list[CaseContext]):
+    """(a) Workflow reports that name their target resource are taken literally."""
     for a in direct_report:
         owners = [c for c in cases if a["resource_id"] in c.direct]
         if not owners and len(cases) == 1 and not owned_by_identifier(a["resource_id"], all_cases):
@@ -82,7 +93,10 @@ def attribute_primary_accounts(data: AuditData, R: datetime, cases: list[CaseCon
             if a["target_system"] == "account_service" and c.primary_account is None:
                 c.primary_account = a["resource_id"]
 
-    # (b) a submitted profile the case is already linked to by identifiers
+
+def take_identifier_linked(primary: list, cases: list[CaseContext]) -> set:
+    """(b) A submitted profile the case is already linked to by identifiers.  Returns the
+    accounts taken so far."""
     taken = {c.primary_account for c in cases if c.primary_account}
     for c in cases:
         if c.primary_account:
@@ -92,11 +106,12 @@ def attribute_primary_accounts(data: AuditData, R: datetime, cases: list[CaseCon
                 c.primary_account = a["resource_id"]
                 taken.add(a["resource_id"])
                 break
+    return taken
 
-    # (c) unique status-compatible candidate (repeat until nothing changes)
-    free = [a for a in primary if a["resource_id"] not in taken
-            and not owned_by_identifier(a["resource_id"], all_cases)]
-    todo = [c for c in cases if c.primary_account is None]
+
+def take_unique_compatible(todo: list[CaseContext], free: list[dict]):
+    """(c) A case with exactly one status-compatible candidate and no rival case for it takes
+    it; repeated until nothing changes (each assignment can make another case unique)."""
     changed = True
     while changed and todo and free:
         changed = False
@@ -105,20 +120,33 @@ def attribute_primary_accounts(data: AuditData, R: datetime, cases: list[CaseCon
             if len(comp) == 1:
                 rivals = [k for k in todo if k is not c and expected_result(k) == comp[0]["reported_result"]]
                 if not rivals:
-                    c.primary_account = comp[0]["resource_id"]
-                    c.attributed[comp[0]["resource_id"]].add("timing:" + comp[0]["activity_id"])
+                    assign_account(c, comp[0], "timing:")
                     todo.remove(c)
                     free.remove(comp[0])
                     changed = True
 
-    # (d) remaining ties: case order <-> submission order (refined by the batch cadence later)
+
+def take_in_order(todo: list[CaseContext], free: list[dict]):
+    """(d) Remaining ties: case order <-> submission order per worker result (the batch
+    cadence refines this later)."""
     for res in ("SUCCESS", "PARTIAL", "FAILED"):
         cs = [c for c in todo if expected_result(c) == res]
         fs = sorted([a for a in free if a["reported_result"] == res], key=lambda a: a["_t"])
         for c, a in zip(cs, fs):
-            c.primary_account = a["resource_id"]
-            c.attributed[a["resource_id"]].add("timing:" + a["activity_id"])
+            assign_account(c, a, "timing:")
 
+
+def attribute_primary_accounts(data: AuditData, R: datetime, cases: list[CaseContext],
+                               all_cases: list[CaseContext], features: Features):
+    """Assign a primary profile to every case of one reporting group (reported at ``R``)."""
+    primary, direct_report = candidate_events(data, R, features)
+    take_reported_targets(direct_report, cases, all_cases)
+    taken = take_identifier_linked(primary, cases)
+    free = [a for a in primary if a["resource_id"] not in taken
+            and not owned_by_identifier(a["resource_id"], all_cases)]
+    todo = [c for c in cases if c.primary_account is None]
+    take_unique_compatible(todo, free)
+    take_in_order(todo, free)
     # (e) last resort: the subject's own account observed after the request
     for c in cases:
         if c.primary_account is None:
@@ -130,12 +158,16 @@ def attribute_primary_accounts(data: AuditData, R: datetime, cases: list[CaseCon
 
 # ----------------------------------------------------------------------------- 2. batch cadence
 def cadence_slot_times(A: int, R: datetime, idxs) -> list[datetime]:
+    """Expected submission times of request indices ``idxs`` for batch offset ``A``."""
     return [R - timedelta(seconds=CADENCE_BASE_S + (A + CADENCE_STEP_S * i) % CADENCE_PERIOD_S) for i in idxs]
 
 
 def fit_batch_offset(info: list) -> int | None:
-    """Best per-batch cadence offset A (most cases within tolerance, then least total error)."""
+    """Best per-batch cadence offset A (most cases within tolerance, then least total error);
+    ``None`` when the batch does not follow the cadence.  ``info`` rows are
+    (case, reported_at, candidate indices, candidate submissions)."""
     def score(A):
+        """(cases within tolerance, -total error) for offset A."""
         hit, err = 0, 0.0
         for _c, R, idxs, cands in info:
             best = min((abs((a["_t"] - t).total_seconds()) for a in cands for t in cadence_slot_times(A, R, idxs)),
@@ -151,19 +183,17 @@ def fit_batch_offset(info: list) -> int | None:
     return best_A
 
 
-def refine_accounts_by_batch_cadence(data: AuditData, all_cases: list[CaseContext]):
-    """Re-solve the timing-attributed primary profiles of every reporting group with the batch
-    cadence as cost.  Identifier-linked and explicitly reported accounts stay fixed."""
-    prim = [a for a in data.activities if is_primary_submission(a)]
-    cases_all = [c for c in all_cases if c.auditable]
-    owned_direct = {c.primary_account for c in cases_all if c.primary_account and c.primary_account in c.direct}
+def window_candidates(c: CaseContext, prim: list, owned_direct: set) -> list[dict]:
+    """Status-compatible primary submissions in the case's window that no other case holds by
+    identifiers."""
+    R = ts(c.req["reported_at"])
+    return [a for a in prim if a["reported_result"] == expected_result(c) and in_window(a["_t"], R, PRIMARY_WINDOW_MIN)
+            and (a["resource_id"] not in owned_direct or a["resource_id"] == c.primary_account)]
 
-    def window(c):
-        R = ts(c.req["reported_at"])
-        return [a for a in prim if a["reported_result"] == expected_result(c) and in_window(a["_t"], R, PRIMARY_WINDOW_MIN)
-                and (a["resource_id"] not in owned_direct or a["resource_id"] == c.primary_account)]
 
-    # 1) learn the cadence of every audit batch (same audit_at and same main evidence file)
+def learn_batch_cadence(data: AuditData, cases_all: list[CaseContext], prim: list, owned_direct: set) -> dict:
+    """case_id -> expected submission times, for every batch (same ``audit_at`` and same main
+    evidence file) whose unambiguous cases fit the cadence."""
     batches = defaultdict(list)
     for c in cases_all:
         be = data.batch_evidence(c)
@@ -176,58 +206,74 @@ def refine_accounts_by_batch_cadence(data: AuditData, all_cases: list[CaseContex
         info = []
         for c in cases:
             idx = round((t0 - ts(c.requested_at)).total_seconds() / 86400)
-            info.append((c, ts(c.req["reported_at"]), (idx, idx + CADENCE_TRAILING_SHIFT), window(c)))
+            info.append((c, ts(c.req["reported_at"]), (idx, idx + CADENCE_TRAILING_SHIFT),
+                         window_candidates(c, prim, owned_direct)))
         best_A = fit_batch_offset(info)
         if best_A is None:
             continue
         for c, R, idxs, _cands in info:
             expected[c.case_id] = cadence_slot_times(best_A, R, idxs)
+    return expected
 
-    # 2) re-solve every reporting group jointly (greedy on ascending cost = optimal here because
-    #    in-tolerance distances are far apart)
+
+def is_fixed(c: CaseContext) -> bool:
+    """Identifier-linked and explicitly reported accounts are never re-assigned."""
+    a = c.primary_account
+    return bool(a) and (a in c.direct or any(w.startswith("report:") for w in c.attributed.get(a, ())))
+
+
+def resolve_reporting_group(data: AuditData, cases: list[CaseContext], prim: list, owned_direct: set,
+                            expected: dict):
+    """Re-assign the timing-attributed accounts of one reporting group, cheapest pair first:
+    cost = distance to the cadence slot (in tolerance) < out of tolerance < no cadence (order)."""
+    free_cases = [c for c in cases if not is_fixed(c)]
+    if not free_cases:
+        return
+    for c in free_cases:
+        old = c.primary_account
+        if old and old not in c.direct:
+            c.attributed.pop(old, None)
+            c.primary_account = None
+    pairs = []
+    for c in free_cases:
+        exp = expected.get(c.case_id)
+        for order, a in enumerate(sorted(window_candidates(c, prim, owned_direct), key=lambda a: a["_t"])):
+            if exp:
+                d = min(abs((a["_t"] - t).total_seconds()) for t in exp)
+                cost = d if d <= CADENCE_TOL_S else 10_000 + d
+            else:
+                cost = 20_000 + order * 100 + rid_num(c.case_id) / 1e6
+            pairs.append((cost, rid_num(c.case_id), c, a))
+    pairs.sort(key=lambda x: (x[0], x[1]))
+    used_c, used_a = set(), set()
+    for cost, _, c, a in pairs:
+        if id(c) in used_c or a["resource_id"] in used_a:
+            continue
+        used_c.add(id(c))
+        used_a.add(a["resource_id"])
+        assign_account(c, a, "cadence:" if cost < 10_000 else "timing:")
+    for c in free_cases:
+        if c.primary_account is None:
+            c.primary_account = last_resort_account(data, c)
+
+
+def refine_accounts_by_batch_cadence(data: AuditData, all_cases: list[CaseContext]):
+    """Re-solve the timing-attributed primary profiles of every reporting group with the batch
+    cadence as cost.  Identifier-linked and explicitly reported accounts stay fixed."""
+    prim = [a for a in data.activities if is_primary_submission(a)]
+    cases_all = [c for c in all_cases if c.auditable]
+    owned_direct = {c.primary_account for c in cases_all if c.primary_account and c.primary_account in c.direct}
+    expected = learn_batch_cadence(data, cases_all, prim, owned_direct)
     groups = defaultdict(list)
     for c in cases_all:
         groups[c.req["reported_at"]].append(c)
-
-    def fixed(c):
-        a = c.primary_account
-        return bool(a) and (a in c.direct or any(w.startswith("report:") for w in c.attributed.get(a, ())))
-
     for cases in groups.values():
-        free_cases = [c for c in cases if not fixed(c)]
-        if not free_cases:
-            continue
-        for c in free_cases:
-            old = c.primary_account
-            if old and old not in c.direct:
-                c.attributed.pop(old, None)
-                c.primary_account = None
-        pairs = []
-        for c in free_cases:
-            exp = expected.get(c.case_id)
-            for order, a in enumerate(sorted(window(c), key=lambda a: a["_t"])):
-                if exp:
-                    d = min(abs((a["_t"] - t).total_seconds()) for t in exp)
-                    cost = d if d <= CADENCE_TOL_S else 10_000 + d
-                else:
-                    cost = 20_000 + order * 100 + rid_num(c.case_id) / 1e6
-                pairs.append((cost, rid_num(c.case_id), c, a))
-        pairs.sort(key=lambda x: (x[0], x[1]))
-        used_c, used_a = set(), set()
-        for cost, _, c, a in pairs:
-            if id(c) in used_c or a["resource_id"] in used_a:
-                continue
-            used_c.add(id(c))
-            used_a.add(a["resource_id"])
-            c.primary_account = a["resource_id"]
-            c.attributed[a["resource_id"]].add(("cadence:" if cost < 10_000 else "timing:") + a["activity_id"])
-        for c in free_cases:
-            if c.primary_account is None:
-                c.primary_account = last_resort_account(data, c)
+        resolve_reporting_group(data, cases, prim, owned_direct, expected)
 
 
 # ----------------------------------------------------------------------------- 3. policy actions
 def circular_distance(a: float, b: float, period: float = 60) -> float:
+    """Distance between two positions on a circle (seconds of a minute by default)."""
     d = (a - b) % period
     return min(d, period - d)
 
@@ -241,6 +287,48 @@ def case_phase(data: AuditData, c: CaseContext) -> int | None:
         if a["resource_id"] == acct and "submitted primary profile" in a["details"]:
             return a["_t"].second
     return None
+
+
+def case_phases(data: AuditData, cases: list[CaseContext], acts: list[dict]) -> dict:
+    """case_id -> timing phase: from the primary submission, else implied by the case's own
+    identifier-linked policy actions, else ``None``."""
+    phases = {}
+    for c in cases:
+        ph = case_phase(data, c)
+        if ph is None:
+            for a in acts:
+                if a["resource_id"] in c.direct and a["event_type"] in POLICY_OPERATION_OFFSET_S:
+                    off = POLICY_PHASE_OFFSET_S if a["target_system"] in ("identity_service", "legal_service") \
+                        else POLICY_OPERATION_OFFSET_S[a["event_type"]]
+                    ph = (a["_t"].second - off) % 60
+                    break
+        phases[c.case_id] = ph
+    return phases
+
+
+def has_linked_analytics(c: CaseContext) -> bool:
+    """The case already holds an analytics profile through identifiers."""
+    return any(r.startswith("analytics_") for r in c.direct)
+
+
+def phase_pairs(cases: list[CaseContext], phases: dict, acts: list[dict], free: list[dict]) -> list[tuple]:
+    """(distance, case, event) for every free event within tolerance of a case's slot phase.
+    Policy actions occupy consecutive slots (legal hold first); each slot advances the phase by
+    POLICY_SLOT_ADVANCE_S."""
+    pairs = []
+    for c in cases:
+        ph = phases[c.case_id]
+        if ph is None:
+            continue
+        has_hold = any(a["event_type"] == "RETAIN_RECORD" and a["resource_id"] in c.direct for a in acts)
+        for a in free:
+            if a["event_type"] == "ANONYMIZE_RECORD" and has_linked_analytics(c):
+                continue
+            k = 1 if (a["event_type"] == "ANONYMIZE_RECORD" and has_hold) else 0
+            d = circular_distance(a["_t"].second, (ph + POLICY_PHASE_OFFSET_S + POLICY_SLOT_ADVANCE_S * k) % 60)
+            if d <= POLICY_PHASE_TOL_S:
+                pairs.append((d, c, a))
+    return pairs
 
 
 def has_preliminary_violation(data: AuditData, c: CaseContext, features: Features) -> bool:
@@ -260,6 +348,18 @@ def has_preliminary_violation(data: AuditData, c: CaseContext, features: Feature
     return False
 
 
+def assign_by_elimination(data: AuditData, rest: list[dict], need: list[CaseContext], features: Features):
+    """Leftover anonymisation events go, in time order, to cases without a known phase,
+    compliant-looking cases first, provided the record was observable by the case's audit."""
+    need.sort(key=lambda c: (has_preliminary_violation(data, c, features), rid_num(c.case_id)))
+    for a in sorted(rest, key=lambda a: a["_t"]):
+        for c in need:
+            if any(o.time <= c.audit_at for o in data.by_resource.get(a["resource_id"], [])):
+                c.attributed[a["resource_id"]].add("policy-order:" + a["activity_id"])
+                need.remove(c)
+                break
+
+
 def attribute_policy_actions(data: AuditData, R: datetime, cases: list[CaseContext],
                              all_cases: list[CaseContext], features: Features):
     """Attribute identifier-free "Policy action completed" events (ANONYMIZE / RETAIN) of one
@@ -270,39 +370,10 @@ def attribute_policy_actions(data: AuditData, R: datetime, cases: list[CaseConte
         return
     free = [a for a in acts if a["event_type"] in ("ANONYMIZE_RECORD", "RETAIN_RECORD")
             and not owned_by_identifier(a["resource_id"], all_cases)]
-    phases = {}
-    for c in cases:
-        ph = case_phase(data, c)
-        if ph is None:
-            # fall back to the phase implied by the case's own identifier-bearing policy actions
-            for a in acts:
-                if a["resource_id"] in c.direct and a["event_type"] in POLICY_OPERATION_OFFSET_S:
-                    off = POLICY_PHASE_OFFSET_S if a["target_system"] in ("identity_service", "legal_service") \
-                        else POLICY_OPERATION_OFFSET_S[a["event_type"]]
-                    ph = (a["_t"].second - off) % 60
-                    break
-        phases[c.case_id] = ph
-
-    def has_linked_analytics(c):
-        return any(r.startswith("analytics_") for r in c.direct)
-
-    pairs = []
-    for c in cases:
-        ph = phases[c.case_id]
-        if ph is None:
-            continue
-        # policy actions occupy consecutive slots (legal hold first); each slot advances the
-        # seconds phase by POLICY_SLOT_ADVANCE_S
-        has_hold = any(a["event_type"] == "RETAIN_RECORD" and a["resource_id"] in c.direct for a in acts)
-        for a in free:
-            if a["event_type"] == "ANONYMIZE_RECORD" and has_linked_analytics(c):
-                continue
-            k = 1 if (a["event_type"] == "ANONYMIZE_RECORD" and has_hold) else 0
-            d = circular_distance(a["_t"].second, (ph + POLICY_PHASE_OFFSET_S + POLICY_SLOT_ADVANCE_S * k) % 60)
-            if d <= POLICY_PHASE_TOL_S:
-                pairs.append((d, c, a))
+    phases = case_phases(data, cases, acts)
+    pairs = phase_pairs(cases, phases, acts, free)
     pairs.sort(key=lambda x: (x[0], rid_num(x[1].case_id)))
-    used_slots, used_a = set(), set()
+    used_slots, used_a = set(), set()     # one event per (case, operation); one case per event
     for _d, c, a in pairs:
         key = (id(c), a["event_type"])
         if key in used_slots or a["resource_id"] in used_a:
@@ -312,15 +383,6 @@ def attribute_policy_actions(data: AuditData, R: datetime, cases: list[CaseConte
         c.attributed[a["resource_id"]].add("policy-phase:" + a["activity_id"])
         c.policy_claims[a["resource_id"]] = a
     used_c = {k[0] for k in used_slots}
-
-    # leftovers: elimination among cases without a known phase, compliant-looking cases first
-    rest = sorted([a for a in free if a["resource_id"] not in used_a and a["event_type"] == "ANONYMIZE_RECORD"],
-                  key=lambda a: a["_t"])
+    rest = [a for a in free if a["resource_id"] not in used_a and a["event_type"] == "ANONYMIZE_RECORD"]
     need = [c for c in cases if id(c) not in used_c and phases[c.case_id] is None and not has_linked_analytics(c)]
-    need.sort(key=lambda c: (has_preliminary_violation(data, c, features), rid_num(c.case_id)))
-    for a in rest:
-        for c in need:
-            if any(o.time <= c.audit_at for o in data.by_resource.get(a["resource_id"], [])):
-                c.attributed[a["resource_id"]].add("policy-order:" + a["activity_id"])
-                need.remove(c)
-                break
+    assign_by_elimination(data, rest, need, features)

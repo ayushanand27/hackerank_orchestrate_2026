@@ -7,7 +7,7 @@ python3 code/main.py                              # output.csv (+ audit trail, r
 python3 code/evaluation/main.py                   # sample + custom metrics, contract check -> latest_metrics.md
 python3 code/evaluation/ablation.py               # strategy comparison (~2 min)          -> ablation.md
 python3 code/evaluation/consistency.py            # unsupervised check on all requests     -> consistency.md
-python3 -m unittest discover -s code/tests        # 53 unit / integration tests
+python3 -m unittest discover -s code/tests        # 57 unit / integration tests
 ```
 
 The evaluation has five parts: (1) the 32 public sample requests scored against
@@ -129,7 +129,7 @@ What the comparison shows:
 
 ## 4. Unit and integration tests
 
-`python3 -m unittest discover -s code/tests` — 53 tests, ~13 s, all passing.
+`python3 -m unittest discover -s code/tests` — 57 tests, ~10 s, all passing.
 
 | file | covers |
 |---|---|
@@ -140,6 +140,7 @@ What the comparison shows:
 | `test_policy.py` | rules file vs fallback, operation ↔ phase ↔ state table, disable/block before delete, deterministic tie-break |
 | `test_state_and_planner.py` | effective-state rules per category, COMPLETE plans cite evidence, INCOMPLETE plans (findings → remediation → verification, empty evidence for future steps) |
 | `test_attribution.py` | circular phase distance, time windows, cadence formula, batch-offset fitting recovers a planted offset and rejects noise |
+| `test_contract.py` | the output-contract validator itself: a valid file passes; late / unknown evidence, evidence on future steps, findings without evidence, wrong states, numbering, order, extra keys, status rules and missing rows are each reported (mutation tests) |
 | `test_engine_scenarios.py` | the 11 custom scenarios end to end; each technique is load-bearing for its scenario; audit-trail content |
 | `test_submission.py` | (needs `dataset/`) fresh run passes the contract, reproduces `output.csv` byte for byte, never cites evidence captured after `audit_at`, sample status accuracy, determinism across runs |
 

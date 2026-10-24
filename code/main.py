@@ -39,6 +39,7 @@ DEFAULT_TRAIL = os.path.join(HERE, "evaluation", "audit_trail.jsonl")
 
 
 def read_requests(path: str) -> list[dict]:
+    """Rows of a requests CSV."""
     with open(path, encoding="utf-8") as fh:
         return list(csv.DictReader(fh))
 
@@ -57,6 +58,7 @@ def joint_context(dataset: str, req_path: str) -> list[dict]:
 
 
 def tool_version(cmd: list[str]) -> str:
+    """First line of a tool's version output (or 'not installed')."""
     try:
         out = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
         return (out.stdout or out.stderr).splitlines()[0].strip()
@@ -65,6 +67,7 @@ def tool_version(cmd: list[str]) -> str:
 
 
 def run_stats(auditor: Auditor, rows: list, out_path: str, wall: float, n_context: int) -> dict:
+    """Statistics of this run for usage_report.md (counts, timings, tool versions, output hash)."""
     ops, statuses, n_steps = Counter(), Counter(), 0
     for _, status, steps in rows:
         statuses[status] += 1
@@ -100,6 +103,7 @@ def run_stats(auditor: Auditor, rows: list, out_path: str, wall: float, n_contex
 
 
 def main(argv=None):
+    """Command-line entry point."""
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--dataset", default=os.path.join(REPO, "dataset"))
     ap.add_argument("--requests", default=None, help="requests CSV (default: dataset/deletion_requests.csv)")

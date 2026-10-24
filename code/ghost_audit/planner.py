@@ -31,6 +31,7 @@ TREATMENT = {
 
 
 def triple(finding: str, remediation: str, verification: str, rid: str, system: str, ev: str) -> list[tuple]:
+    """Finding (with evidence) + remediation + post-remediation check for one violation."""
     return [("FINDING", finding, rid, system, ev),
             ("REMEDIATION", remediation, rid, system, ""),
             ("VERIFICATION", verification, rid, system, "")]

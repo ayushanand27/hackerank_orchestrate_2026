@@ -29,6 +29,7 @@ def rid_num(rid: str) -> int:
 
 
 def minutes_between(t: datetime, ref: datetime) -> float:
+    """Signed minutes from ``ref`` to ``t``."""
     return (t - ref).total_seconds() / 60
 
 
@@ -48,14 +49,17 @@ class CaseContext:
 
     @property
     def case_id(self) -> str:
+        """The request's case id."""
         return self.req["case_id"]
 
     @property
     def audit_at(self) -> str:
+        """Cut-off: only information at or before this time may decide the case."""
         return self.req["audit_at"]
 
     @property
     def requested_at(self) -> str:
+        """When the person submitted the request."""
         return self.req["requested_at"]
 
     @property
@@ -64,6 +68,7 @@ class CaseContext:
         return self.deletion and self.subject is not None
 
     def reset_attribution(self):
+        """Forget timing-based attributions (identifier links are kept) before a joint re-run."""
         self.attributed = defaultdict(set)
         self.primary_account = None
         self.policy_claims = {}
@@ -71,6 +76,7 @@ class CaseContext:
 
 @dataclass
 class AuditData:
+    """Everything loaded from ``dataset/``: identities, rules, evidence store, activity stream (read-only)."""
     dataset_dir: str
     identities: IdentityIndex
     rules: dict
@@ -97,14 +103,17 @@ class AuditData:
     # ------------------------------------------------------------------ convenience views
     @property
     def observations(self) -> list[Observation]:
+        """All normalised observations from the evidence files."""
         return self.evidence.observations
 
     @property
     def documents(self) -> list:
+        """Text-scanned PDFs and screenshots."""
         return self.evidence.documents
 
     @property
     def coverage(self) -> list:
+        """Complete point-in-time listings (for absence by omission)."""
         return self.evidence.coverage
 
     # ------------------------------------------------------------------ identity tests
@@ -117,6 +126,7 @@ class AuditData:
         return vals
 
     def belongs(self, subj: Subject, o: Observation) -> bool:
+        """Does the observation carry one of the subject's identifiers?"""
         return any(subj.matches(v) for v in self.obs_values(o))
 
     def foreign(self, subj: Subject, o: Observation) -> bool:

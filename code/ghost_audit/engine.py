@@ -33,8 +33,10 @@ from .state import build_views, linked_resources
 
 
 class Auditor:
+    """Runs the audit pipeline over a dataset; ``ctx`` holds one CaseContext per request."""
     def __init__(self, dataset_dir: str, cache_dir: str | None = None, features: Features | None = None,
                  evidence=None):
+        """Load the dataset (or reuse a parsed evidence store) with the given feature switches."""
         self.features = features or Features()
         t0 = time.perf_counter()
         self.data = AuditData.load(dataset_dir, cache_dir, self.features.historical_identity, evidence)
