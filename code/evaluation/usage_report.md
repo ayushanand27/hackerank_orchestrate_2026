@@ -47,11 +47,11 @@ cannot hallucinate resources, states or evidence ids.
 
 | stage | wall time (s) |
 |---|---|
-| load evidence, identities, activity | 0.32 |
-| intent + identity + linking | 3.45 |
-| joint timing attribution | 2.21 |
-| per-case state + planning | 0.47 |
-| **total (warm, OCR cached)** | **6.51** (≈ 13 ms / request) |
+| load evidence, identities, activity | 0.24 |
+| intent + identity + linking | 3.16 |
+| joint timing attribution | 2.06 |
+| per-case state + planning | 0.49 |
+| **total (warm, OCR cached)** | **6.01** (≈ 12 ms / request) |
 | total (cold, OCR from scratch) | 48.4 — output byte-identical (SHA-256 compared) |
 
 ## Development-time AI usage (not part of the inference pipeline)
