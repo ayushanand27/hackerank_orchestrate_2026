@@ -29,29 +29,15 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 
 from ghost_audit.engine import Auditor  # noqa: E402
+from ghost_audit.output import case_sort_key, write_output  # noqa: E402
 
 REPO = os.path.dirname(HERE)
 DEFAULT_STATS = os.path.join(HERE, "evaluation", "run_stats.json")
 
 
-def case_sort_key(cid: str):
-    try:
-        return int(cid.split("_")[-1])
-    except ValueError:
-        return cid
-
-
 def read_requests(path: str) -> list[dict]:
     with open(path, encoding="utf-8") as fh:
         return list(csv.DictReader(fh))
-
-
-def write_output(path: str, rows: list[tuple[str, str, list]]):
-    with open(path, "w", encoding="utf-8", newline="") as f:
-        w = csv.writer(f)
-        w.writerow(["case_id", "deletion_status", "steps_json"])
-        for cid, status, steps in rows:
-            w.writerow([cid, status, json.dumps(steps, separators=(",", ":"), ensure_ascii=False)])
 
 
 def joint_context(dataset: str, req_path: str) -> list[dict]:

@@ -274,7 +274,6 @@ LOOKUP_KEYS = ("lookup_key", "subject_key", "match_key", "scan_key", "subject_re
 
 def _log_state(ev: str, r: dict) -> tuple[str | None, str | None]:
     """Return (state, category override) for a completion-type log event."""
-    rid = r.get("resource_id", "")
     rows = r.get("rows")
     http = r.get("http_status")
     if ev in ("record_lookup",):

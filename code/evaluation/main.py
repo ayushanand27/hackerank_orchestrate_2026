@@ -16,7 +16,6 @@ from __future__ import annotations
 
 import argparse
 import csv
-import json
 import os
 import sys
 
@@ -27,7 +26,7 @@ sys.path.insert(0, CODE)
 sys.path.insert(0, HERE)
 
 from ghost_audit.engine import Auditor  # noqa: E402
-from ghost_audit.policy import OP_STATE, OP_PHASE, PHASE_ORDER, OP_RANK  # noqa: E402
+from contract import validate_output  # noqa: E402
 from metrics import compare, summary, load_output_csv  # noqa: E402
 import custom_cases  # noqa: E402
 
@@ -44,71 +43,6 @@ def per_case_table(res: dict) -> str:
         extra = "<br>".join(f"{m[3]} {m[2]} ({m[5] or '-'})" for m in pc["extra"]) or ""
         out.append(f"| {cid} | {pc['status'][0]} | {pc['status'][1]} | {'yes' if pc['exact'] else 'no'} | {miss} | {extra} |")
     return "\n".join(out) + "\n"
-
-
-def validate_output(path: str, dataset: str) -> list[str]:
-    errs = []
-    reqs = {r["case_id"]: r for r in csv.DictReader(open(os.path.join(dataset, "deletion_requests.csv"), encoding="utf-8"))}
-    manifest = {r["file_id"]: r for r in csv.DictReader(open(os.path.join(dataset, "evidence_files.csv"), encoding="utf-8"))}
-    acts = {r["activity_id"]: r for r in csv.DictReader(open(os.path.join(dataset, "system_activity.csv"), encoding="utf-8"))}
-    audits = {r["audit_id"] for r in csv.DictReader(open(os.path.join(dataset, "user_audit_log.csv"), encoding="utf-8"))}
-    with open(path, encoding="utf-8") as f:
-        header = f.readline().strip()
-    if header != "case_id,deletion_status,steps_json":
-        errs.append(f"bad header {header!r}")
-    rows = list(csv.DictReader(open(path, encoding="utf-8")))
-    if len(rows) != len(reqs):
-        errs.append(f"row count {len(rows)} != {len(reqs)}")
-    ids = [r["case_id"] for r in rows]
-    if ids != sorted(ids, key=lambda c: int(c.split("_")[1])):
-        errs.append("rows not sorted by case_id")
-    if set(ids) != set(reqs):
-        errs.append("case ids differ from deletion_requests.csv")
-    for r in rows:
-        cid, st = r["case_id"], r["deletion_status"]
-        try:
-            steps = json.loads(r["steps_json"])
-        except json.JSONDecodeError:
-            errs.append(f"{cid}: invalid JSON")
-            continue
-        if st not in ("COMPLETE", "INCOMPLETE", "NOT_APPLICABLE"):
-            errs.append(f"{cid}: bad status {st}")
-        if st == "NOT_APPLICABLE" and steps:
-            errs.append(f"{cid}: NOT_APPLICABLE must have []")
-        if st == "COMPLETE" and any(s["phase"] != "VERIFICATION" for s in steps):
-            errs.append(f"{cid}: COMPLETE with non-verification steps")
-        if st == "INCOMPLETE" and not any(s["phase"] == "FINDING" for s in steps):
-            errs.append(f"{cid}: INCOMPLETE without findings")
-        prev = None
-        for i, s in enumerate(steps, 1):
-            if set(s) != {"step_no", "phase", "system_id", "resource_id", "operation", "state", "evidence_id"}:
-                errs.append(f"{cid}: bad keys {sorted(s)}")
-            if s["step_no"] != i:
-                errs.append(f"{cid}: step numbering")
-            if OP_STATE.get(s["operation"]) != s["state"] or OP_PHASE.get(s["operation"]) != s["phase"]:
-                errs.append(f"{cid}: bad op/state/phase {s}")
-            key = (PHASE_ORDER[s["phase"]], OP_RANK[s["operation"]], s["system_id"], s["resource_id"])
-            if prev and key < prev:
-                errs.append(f"{cid}: steps out of order at {i}")
-            prev = key
-            ev = s["evidence_id"]
-            needs = s["phase"] == "FINDING" or (st == "COMPLETE" and s["phase"] == "VERIFICATION")
-            if s["phase"] == "REMEDIATION" or (st == "INCOMPLETE" and s["phase"] == "VERIFICATION"):
-                if ev:
-                    errs.append(f"{cid}: future step must not cite evidence")
-            if needs and ev:
-                at = reqs[cid]["audit_at"]
-                if ev in manifest:
-                    if manifest[ev]["captured_at"] > at:
-                        errs.append(f"{cid}: cites {ev} captured after audit_at")
-                elif ev in acts:
-                    if acts[ev]["event_time"] > at:
-                        errs.append(f"{cid}: cites {ev} after audit_at")
-                elif ev not in audits:
-                    errs.append(f"{cid}: unknown evidence id {ev}")
-            if s["phase"] == "FINDING" and not ev:
-                errs.append(f"{cid}: finding without evidence")
-    return errs
 
 
 def main(argv=None):

@@ -75,6 +75,7 @@ def summary(res: dict) -> dict:
 def load_output_csv(path: str) -> dict:
     import csv
     out = {}
-    for r in csv.DictReader(open(path, encoding="utf-8")):
-        out[r["case_id"]] = (r["deletion_status"], json.loads(r["steps_json"] or "[]"))
+    with open(path, encoding="utf-8") as fh:
+        for r in csv.DictReader(fh):
+            out[r["case_id"]] = (r["deletion_status"], json.loads(r["steps_json"] or "[]"))
     return out

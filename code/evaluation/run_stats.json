@@ -42,12 +42,12 @@
   "activities": 4011,
   "identities": 850,
   "timings_s": {
-    "load": 0.32,
-    "linking": 3.17,
-    "attribution": 2.13,
-    "audit": 0.55
+    "load": 0.3,
+    "linking": 2.97,
+    "attribution": 2.02,
+    "audit": 0.51
   },
-  "wall_time_s": 6.24,
+  "wall_time_s": 5.83,
   "llm_calls": 0,
   "input_tokens": 0,
   "output_tokens": 0,
