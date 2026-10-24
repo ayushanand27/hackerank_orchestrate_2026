@@ -1,0 +1,391 @@
+Customer Reference
+
+Ley
+
+5
+
+9 Search references, orders, support cases or finance records...
+
+Production
+
+Help
+
+CR
+
+\
+
+VA
+
+Northstar Shop
+
+Registry
+
+Northstar Shop / Customer Reference Registry / Customer references
+
+Home
+
+Retained reference
+
+Filter
+
+user_17
+
+Export
+
+Customer key - Account Platform - eu-west
+
+Customer references
+
+Overview
+
+Linked records
+
+History
+
+Orders
+
+Support
+
+Refe
+
+ere
+
+ype
+
+Cr
+
+eat
+
+‘ed
+
+ed
+
+Most recent update
+
+Owner team
+
+Customer key
+
+11 Jan 2024 08:42 UTC
+
+10 Mar 2026 07:18 UTC
+
+Account Platform
+
+Finance
+
+Data
+
+agement
+
+~
+
+Overview
+
+Updatec
+
+ents
+
+4 re
+
+d
+
+History
+
+Reports
+
+System
+
+Record reference
+
+Relationship
+
+Created (UTC)
+
+Status
+
+10 Mar 2026
+
+Metadata reviewed
+
+1
+
+Orders
+
+ORD-20263245
+
+Linked to customer
+
+11 Jan 2024 08:45
+
+Active
+
+22 Aug 2024
+
+Finance link added
+
+2
+
+CS-3245
+
+Linked to customer
+
+14 Feb 2024 12:16
+
+Active
+
+03 Jun 2024
+
+Support link added
+
+Support
+
+14 Feb 2024
+
+Support link added
+
+CS-3378
+
+Linked to customer
+
+03 Jun 2024 09:27
+
+Active
+
+3
+
+Support
+
+11 Jan 2024
+
+Reference created
+
+Finance
+
+FIN-7742
+
+Linked to customer
+
+22 Aug 2024 15:03
+
+Active
+
+Activity
+
+Reference created
+
+e
+
+Rec
+
+Order link added
+
+ORD-2026
+
+Support links added
+
+CS-3245, CS
+
+Finance link added
+
+FIN
+
+Metadata reviewed
+
+Rec
+
+Customer Reference
+
+Ley
+
+5
+
+9 Search references, orders, support cases or finance records...
+
+Production
+
+Help
+
+CR
+
+\
+
+VA
+
+Northstar Shop
+
+Registry
+
+Northstar Shop / Customer Reference Registry / Customer references
+
+Home
+
+Retained reference
+
+Filter
+
+user_17
+
+Export
+
+Customer key - Account Platform - eu-west
+
+Customer references
+
+Overview
+
+Linked records
+
+History
+
+Orders
+
+Support
+
+Refe
+
+ere
+
+ype
+
+Cr
+
+eat
+
+‘ed
+
+ed
+
+Most recent update
+
+Owner team
+
+Customer key
+
+11 Jan 2024 08:42 UTC
+
+10 Mar 2026 07:18 UTC
+
+Account Platform
+
+Finance
+
+Data
+
+agement
+
+~
+
+Overview
+
+Updatec
+
+ents
+
+4 re
+
+d
+
+History
+
+Reports
+
+System
+
+Record reference
+
+Relationship
+
+Created (UTC)
+
+Status
+
+10 Mar 2026
+
+Metadata reviewed
+
+1
+
+Orders
+
+ORD-20263245
+
+Linked to customer
+
+11 Jan 2024 08:45
+
+Active
+
+22 Aug 2024
+
+Finance link added
+
+2
+
+CS-3245
+
+Linked to customer
+
+14 Feb 2024 12:16
+
+Active
+
+03 Jun 2024
+
+Support link added
+
+Support
+
+14 Feb 2024
+
+Support link added
+
+CS-3378
+
+Linked to customer
+
+03 Jun 2024 09:27
+
+Active
+
+3
+
+Support
+
+11 Jan 2024
+
+Reference created
+
+Finance
+
+FIN-7742
+
+Linked to customer
+
+22 Aug 2024 15:03
+
+Active
+
+Activity
+
+Reference created
+
+e
+
+Rec
+
+Order link added
+
+ORD-2026
+
+Support links added
+
+CS-3245, CS
+
+Finance link added
+
+FIN
+
+Metadata reviewed
+
+Rec

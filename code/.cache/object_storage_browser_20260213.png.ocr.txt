@@ -1,0 +1,451 @@
+Ley
+
+Nimbus Object Storage
+
+Search objects by name or prefix
+
+Production
+
+Help
+
+NO
+
+5
+
+Northstar Shop
+
+\
+
+VA
+
+Northstar Shop / Nimbus Object Storage / northstar-customer-data
+
+Buckets
+
+8 objects
+
+Filter
+
+northstar-customer-data
+
+Export
+
+eu-west-1 / support-attachments / 2026 / 02
+
+Access policies
+
+Objects
+
+Versions
+
+Access
+
+Monitoring
+
+Account
+
+Region
+
+Captured
+
+Storage class
+
+Settings
+
+Northstar Production
+
+eu-west-1
+
+13 Feb 2026 08:00 UTC
+
+All
+
+northstar-assets
+
+northstar-customer-
+
+ents ag¢
+
+d
+
+data
+
+Objects
+
+Updatec
+
+delivery_confirmation_19.pdf
+
+northstar-logs
+
+Name
+
+Size
+
+Version
+
+Modified (UTC)
+
+Storage class
+
+Size
+
+684 KB
+
+1
+
+delivery_confirmation_19.pdf
+
+684 KB
+
+12 Feb 18:42
+
+Standard
+
+v3
+
+Version
+
+v3
+
+Content type
+
+application/pdf
+
+delivery_confirmation_20.pdf
+
+712 KB
+
+11 Feb 14:17
+
+Standard
+
+v1
+
+AES-256
+
+Encryption
+
+return_label_4821.pdf
+
+203 KB
+
+10 Feb 09:33
+
+Standard
+
+v1
+
+Checksum
+
+e71b6d...
+
+198 KB
+
+11 Feb 16:05
+
+Standard
+
+v2
+
+return_label_4876.pdf
+
+Uploader
+
+support-service
+
+318 KB
+
+10 Feb 11:21
+
+Standard
+
+v1
+
+invoice_NS-10493.pdf
+
+Modified
+
+12 Feb 2026 18:42 UTC
+
+6
+
+2.4 MB
+
+12 Feb 10:08
+
+Standard
+
+v1
+
+parcel_damage_7713.jpg
+
+Activity
+
+v3
+
+customer_export_2026-02-10.zip
+
+128 MB
+
+10 Feb 23:14
+
+Standard
+
+v1
+
+e
+
+2
+
+netadata update
+
+customer_export_2026-02-12.zip
+
+131 MB
+
+12 Feb 21:56
+
+Standard
+
+v1
+
+v2
+
+upload complete
+
+v1
+
+2 Feb 18
+
+objec
+
+t
+
+created
+
+eS
+
+Nimbus Object Storage
+
+9 Search objects by name or prefix
+
+Production
+
+Help
+
+NO
+
+5
+
+Northstar Shop
+
+\
+
+VA
+
+Northstar Shop / Nimbus Object Storage / northstar-customer-data
+
+Buckets
+
+8 objects
+
+Filter
+
+northstar-customer-data
+
+Export
+
+eu-west-1 / support-attachments / 2026 / 02
+
+Access policies
+
+Objects
+
+Versions
+
+Access
+
+Monitoring
+
+Account
+
+Region
+
+Captured
+
+Storage class
+
+Settings
+
+Northstar Production
+
+eu-west-1
+
+13 Feb 2026 08:00 UTC
+
+All
+
+northstar-assets
+
+northstar-customer-
+
+ents ag¢
+
+d
+
+data
+
+Objects
+
+Updatec
+
+delivery_confirmation_19.pdf
+
+northstar-logs
+
+Name
+
+Size
+
+Version
+
+Modified (UTC)
+
+Storage class
+
+Size
+
+684 KB
+
+1
+
+delivery_confirmation_19.pdf
+
+684 KB
+
+12 Feb 18:42
+
+Standard
+
+v3
+
+Version
+
+v3
+
+Content type
+
+application/pdf
+
+delivery_confirmation_20.pdf
+
+712 KB
+
+11 Feb 14:17
+
+Standard
+
+v1
+
+AES-256
+
+Encryption
+
+return_label_4821.pdf
+
+203 KB
+
+10 Feb 09:33
+
+Standard
+
+v1
+
+Checksum
+
+e71b6d...
+
+198 KB
+
+11 Feb 16:05
+
+Standard
+
+v2
+
+return_label_4876.pdf
+
+Uploader
+
+support-service
+
+318 KB
+
+10 Feb 11:21
+
+Standard
+
+v1
+
+invoice_NS-10493.pdf
+
+Modified
+
+12 Feb 2026 18:42 UTC
+
+6
+
+2.4 MB
+
+12 Feb 10:08
+
+Standard
+
+v1
+
+parcel_damage_7713.jpg
+
+Activity
+
+v3
+
+customer_export_2026-02-10.zip
+
+128 MB
+
+10 Feb 23:14
+
+Standard
+
+v1
+
+e
+
+2
+
+netadata update
+
+customer_export_2026-02-12.zip
+
+131 MB
+
+12 Feb 21:56
+
+Standard
+
+v1
+
+v2
+
+upload complete
+
+v1
+
+2 Feb 18
+
+objec
+
+t
+
+created

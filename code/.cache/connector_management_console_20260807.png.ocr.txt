@@ -1,0 +1,399 @@
+Le»
+
+5
+
+BridgeOps
+
+9 Search connectors...
+
+Production Help
+
+B
+
+Northstar Shop
+
+»~
+
+VA
+
+Northstar Shop / BridgeOps / Connections
+
+|
+
+| Connections
+
+12 connectors
+
+Filter
+
+Connections
+
+PRODUCTION - eu-west - 07 Aug 2026 08:00 UTC
+
+Topology
+
+Topology
+
+Throughput
+
+Recent deliveries
+
+Monitoring
+
+Events
+
+Healthy
+
+our
+
+Delivery
+
+Backlog
+
+Des
+
+ation
+
+ealth
+
+12
+
+4.113
+
+18s
+
+18
+
+Healthy
+
+Destinations
+
+Settings
+
+Topology
+
+UF
+
+ated
+
+agc
+
+4re
+
+d
+
+data_flow_1121
+
+Connector
+
+Destination
+
+Selector
+
+Mode
+
+Events/hour
+
+Last contact
+
+Status
+
+Healthy
+
+1
+
+customer_analytics_warehouse
+
+jain.aditi@gmail.com
+
+Continuous
+
+1,284
+
+07:59:42
+
+data_flow_1121
+
+Owner
+
+Data Platform
+
+2
+
+Continuous
+
+842
+
+07:59:36
+
+Destination
+
+customer_analytics_warehouse
+
+data_flow_9846
+
+customer_analytics_warehouse
+
+lucia-torres@gmail.com
+
+Selector
+
+jain.aditi@gmail.com
+
+order events
+
+Continuous
+
+650
+
+07:59:28
+
+Order notifications
+
+notification_service
+
+Sync mode
+
+Continuous sync
+
+Delivery tracking
+
+logistics_warehouse
+
+shipment events
+
+Continuous
+
+420
+
+07:59:13
+
+Last response
+
+200 OK-1.8s
+
+Activity
+
+@ 07:59:42
+
+ents
+
+delivered
+
+07:58:10
+
+checkpoint c
+
+mr
+
+tted
+
+07:56:44
+
+events retried
+
+07:55:02
+
+de
+
+1ation acknowledged
+
+Le»
+
+5
+
+BridgeOps
+
+9 Search connectors...
+
+Production Help
+
+B
+
+Northstar Shop
+
+»~
+
+YU
+
+Northstar Shop / BridgeOps / Connections
+
+|
+
+| Connections
+
+12 connectors
+
+Filter
+
+Connections
+
+PRODUCTION - eu-west - 07 Aug 2026 08:00 UTC
+
+Topology
+
+Topology
+
+Throughput
+
+Recent deliveries
+
+Monitoring
+
+Events
+
+Healthy
+
+our
+
+Delivery
+
+Backlog
+
+Des
+
+ation
+
+ealth
+
+12
+
+4,113
+
+18s
+
+18
+
+Healthy
+
+Destinations
+
+Settings
+
+Topology
+
+UF
+
+ated
+
+agc
+
+4re
+
+d
+
+data_flow_1121
+
+Connector
+
+Destination
+
+Selector
+
+Mode
+
+Events/hour
+
+Last contact
+
+Status
+
+Healthy
+
+1
+
+customer_analytics_warehouse
+
+jain.aditi@gmail.com
+
+Continuous
+
+1,284
+
+07:59:42
+
+data_flow_1121
+
+Owner
+
+Data Platform
+
+2
+
+Continuous
+
+842
+
+07:59:36
+
+Destination
+
+customer_analytics_warehouse
+
+data_flow_9846
+
+customer_analytics_warehouse
+
+lucia-torres@gmail.com
+
+Selector
+
+jain.aditi@gmail.com
+
+order events
+
+Continuous
+
+650
+
+07:59:28
+
+Order notifications
+
+notification_service
+
+Sync mode
+
+Continuous sync
+
+Delivery tracking
+
+logistics_warehouse
+
+shipment events
+
+Continuous
+
+420
+
+07:59:13
+
+Last response
+
+200 OK-1.8s
+
+Activity
+
+@ 07:59:42
+
+ents
+
+delivered
+
+07:58:10
+
+checkpoint c
+
+mr
+
+tted
+
+07:56:44
+
+events retried
+
+07:55:02
+
+de
+
+1ation acknowledged

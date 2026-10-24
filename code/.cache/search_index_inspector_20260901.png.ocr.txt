@@ -1,0 +1,351 @@
+Le»
+
+5
+
+Search Console
+
+2 email:g.silva76@gmail.com
+
+Production
+
+Help
+
+sc
+
+Northstar Shop
+
+»~
+
+VA
+
+Northstar Shop / Search Console / Customer Search
+
+Customer Search
+
+2 hits
+
+Filter
+
+Export
+
+Customer Search
+
+customer_directory_v3 / prod-eu
+
+Product Search
+
+Results (2)
+
+Query details
+
+Shard timing
+
+Order Search
+
+Indexes
+
+Exec
+
+cuted
+
+cuted
+
+Latency
+
+Index
+
+Environment
+
+Shard tota
+
+01 Sep 2026 06:00:14 UTC
+
+184 ms
+
+customer_directory_v3
+
+prod-eu
+
+184 ms
+
+Cluster health
+
+Slow queries
+
+Updated momer
+
+ag
+
+d
+
+Results (2)
+
+Raw document - search_428
+
+-
+
+id
+
+Display name
+
+Email
+
+Customer reference
+
+Score
+
+Last indexed
+
+ingex
+
+customer_directory_v3
+
+1
+
+search_428
+
+Gabriel Silva
+
+g.silva76@gmail.com
+
+user_13
+
+9.84
+
+05:58:21 UTC
+
+id
+
+d
+
+search_428
+
+4.12
+
+05:55:03 UTC
+
+display_name
+
+Gabriel Silva
+
+2
+
+search_1874
+
+g.silva76.jr@gmail.com
+
+email
+
+g.silva76@gmail.com
+
+customer_reference
+
+user_13
+
+indexed_at
+
+2026-09-01T05:58:21Z
+
+Activity
+
+e
+
+06:00:14
+
+email:g.s
+
+va76@gmail.com
+
+05:42:03
+
+stomer
+
+reference:user
+
+Thit
+
+05:31:18
+
+lay
+
+name
+
+Aditi Jain"
+
+Thi
+
+Le»
+
+5
+
+Search Console
+
+Q email:g.silva76@gmail.com
+
+Production
+
+Help
+
+sc
+
+Northstar Shop
+
+»~
+
+YU
+
+Northstar Shop / Search Console / Customer Search
+
+Customer Search
+
+2 hits
+
+Filter
+
+Export
+
+Customer Search
+
+customer_directory_v3 / prod-eu
+
+Product Search
+
+Results (2)
+
+Query details
+
+Shard timing
+
+Order Search
+
+Indexes
+
+Exec
+
+cuted
+
+cuted
+
+Latency
+
+Index
+
+Environment
+
+Shard tota
+
+01 Sep 2026 06:00:14 UTC
+
+184 ms
+
+customer_directory_v3
+
+prod-eu
+
+184 ms
+
+Cluster health
+
+Slow queries
+
+Updated momer
+
+ag
+
+d
+
+Results (2)
+
+Raw document - search_428
+
+=
+
+id
+
+Display name
+
+Email
+
+Customer reference
+
+Score
+
+Last indexed
+
+ingex
+
+customer_directory_v3
+
+1
+
+search_428
+
+Gabriel Silva
+
+g.silva76@gmail.com
+
+user_13
+
+9.84
+
+05:58:21 UTC
+
+id
+
+d
+
+search_428
+
+4.12
+
+05:55:03 UTC
+
+display_name
+
+Gabriel Silva
+
+2
+
+search_1874
+
+g.silva76.jr@gmail.com
+
+email
+
+g.silva76@gmail.com
+
+customer_reference
+
+user_13
+
+indexed_at
+
+2026-09-01T05:58:21Z
+
+Activity
+
+e
+
+06:00:14
+
+email:g.s
+
+va76@gmail.com
+
+05:42:03
+
+stomer
+
+reference:user
+
+Thit
+
+05:31:18
+
+lay
+
+name
+
+Aditi Jain"
+
+Thi
