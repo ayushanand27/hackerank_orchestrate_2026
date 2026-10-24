@@ -273,73 +273,95 @@ class Auditor:
     def _refine_accounts_by_batch_cadence(self):
         prim = [a for a in self.activities if a["target_system"] == "account_service"
                 and a["event_type"] == "DELETE_RECORD" and "submitted primary profile" in a["details"]]
-        batches = defaultdict(list)
-        for c in self.ctx.values():
-            if c.deletion and c.subject is not None:
-                be = self.batch_evidence(c)
-                batches[(c.req["audit_at"], be[0] if be else "")].append(c)
         B, S, P, TOL = self.CADENCE_BASE, self.CADENCE_STEP, self.CADENCE_PERIOD, self.CADENCE_TOL
-        owned_direct = set()
-        for c in self.ctx.values():
-            if c.deletion and c.primary_account and c.primary_account in c.direct:
-                owned_direct.add(c.primary_account)
+        cases_all = [c for c in self.ctx.values() if c.deletion and c.subject is not None]
+        owned_direct = {c.primary_account for c in cases_all if c.primary_account and c.primary_account in c.direct}
+
+        def window(c):
+            R = ts(c.req["reported_at"])
+            res = STATUS_RESULT.get(c.req["reported_status"])
+            return [a for a in prim if a["reported_result"] == res and -90 <= (a["_t"] - R).total_seconds() / 60 <= -30
+                    and (a["resource_id"] not in owned_direct or a["resource_id"] == c.primary_account)]
+
+        # 1) learn the cadence of every audit batch
+        batches = defaultdict(list)
+        for c in cases_all:
+            be = self.batch_evidence(c)
+            batches[(c.req["audit_at"], be[0] if be else "")].append(c)
+        expected: dict[str, list] = {}
         for key, cases in batches.items():
             if len(cases) < 3:
                 continue
             t0 = max(ts(c.req["requested_at"]) for c in cases)
             info = []
             for c in cases:
-                R = ts(c.req["reported_at"])
                 idx = round((t0 - ts(c.req["requested_at"])).total_seconds() / 86400)
-                res = STATUS_RESULT.get(c.req["reported_status"])
-                cands = [a for a in prim if a["reported_result"] == res and -90 <= (a["_t"] - R).total_seconds() / 60 <= -30
-                         and (a["resource_id"] not in owned_direct or a["resource_id"] == c.primary_account)]
-                info.append((c, R, idx, cands))
+                # the batch's trailing request is sometimes dated after the others; its slot
+                # then corresponds to index + 20
+                info.append((c, ts(c.req["reported_at"]), (idx, idx + 20), window(c)))
+
+            def slot_times(A, R, idxs):
+                return [R - timedelta(seconds=B + (A + S * i) % P) for i in idxs]
 
             def fit(A):
-                err, hit = 0.0, 0
-                for c, R, idx, cands in info:
-                    u = (A + S * idx) % P
-                    exp_t = R - timedelta(seconds=B + u)
-                    best = min((abs((a["_t"] - exp_t).total_seconds()) for a in cands), default=None)
+                hit, err = 0, 0.0
+                for c, R, idxs, cands in info:
+                    best = min((abs((a["_t"] - t).total_seconds()) for a in cands for t in slot_times(A, R, idxs)), default=None)
                     if best is not None and best <= TOL:
                         hit += 1
                         err += best
                 return hit, -err
 
             bestA = max(range(0, P, 3), key=fit)
-            hits, _ = fit(bestA)
-            if hits < max(3, len(info) // 2):
-                continue  # cadence not identifiable for this batch
-            # re-assign: each case takes the candidate closest to its expected cadence slot
+            if fit(bestA)[0] < max(3, len(info) // 2):
+                continue
+            for c, R, idxs, cands in info:
+                expected[c.req["case_id"]] = slot_times(bestA, R, idxs)
+
+        # 2) re-solve every reporting group jointly with the cadence as the cost
+        groups = defaultdict(list)
+        for c in cases_all:
+            groups[c.req["reported_at"]].append(c)
+        for R, cases in groups.items():
+            def fixed(c):
+                a = c.primary_account
+                return bool(a) and (a in c.direct or any(w.startswith("report:") for w in c.attributed.get(a, ())))
+            free_cases = [c for c in cases if not fixed(c)]
+            if not free_cases:
+                continue
+            for c in free_cases:
+                old = c.primary_account
+                if old and old not in c.direct:
+                    c.attributed.pop(old, None)
+                    c.primary_account = None
             pairs = []
-            for c, R, idx, cands in info:
-                if c.primary_account and c.primary_account in c.direct:
-                    continue
-                u = (bestA + S * idx) % P
-                exp_t = R - timedelta(seconds=B + u)
-                for a in cands:
-                    d = abs((a["_t"] - exp_t).total_seconds())
-                    if d <= TOL:
-                        pairs.append((d, c, a))
-            pairs.sort(key=lambda x: x[0])
+            for c in free_cases:
+                cands = window(c)
+                exp = expected.get(c.req["case_id"])
+                for order, a in enumerate(sorted(cands, key=lambda a: a["_t"])):
+                    if exp:
+                        d = min(abs((a["_t"] - t).total_seconds()) for t in exp)
+                        cost = d if d <= TOL else 10_000 + d
+                    else:
+                        cost = 20_000 + order * 100 + rid_num(c.req["case_id"]) / 1e6
+                    pairs.append((cost, rid_num(c.req["case_id"]), c, a))
+            pairs.sort(key=lambda x: (x[0], x[1]))
             used_c, used_a = set(), set()
-            for d, c, a in pairs:
+            for cost, _, c, a in pairs:
                 if id(c) in used_c or a["resource_id"] in used_a:
                     continue
                 used_c.add(id(c))
                 used_a.add(a["resource_id"])
-                if c.primary_account != a["resource_id"]:
-                    old = c.primary_account
-                    if old and old in c.attributed and old not in c.direct:
-                        del c.attributed[old]
-                    # release the slot from whichever case currently holds it
-                    for k in self.ctx.values():
-                        if k is not c and k.primary_account == a["resource_id"] and a["resource_id"] not in k.direct:
-                            k.primary_account = None
-                            k.attributed.pop(a["resource_id"], None)
-                    c.primary_account = a["resource_id"]
-                    c.attributed[a["resource_id"]].add("cadence:" + a["activity_id"])
+                c.primary_account = a["resource_id"]
+                tag = "cadence:" if cost < 10_000 else "timing:"
+                c.attributed[a["resource_id"]].add(tag + a["activity_id"])
+            # direct-report style workflows and last-resort fallbacks stay as before
+            for c in free_cases:
+                if c.primary_account is None:
+                    accts = sorted({o.resource_id for o in self.obs if o.resource_id in c.direct and o.category == "USER_PROFILE"
+                                    and c.req["requested_at"] <= o.time <= c.req["audit_at"]})
+                    if len(accts) == 1:
+                        c.primary_account = accts[0]
 
     @staticmethod
     def _take_account(c, a, todo, free):
