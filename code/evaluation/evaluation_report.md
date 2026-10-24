@@ -73,8 +73,9 @@ Final run: **0 violations**; distribution 355 `INCOMPLETE`, 153 `COMPLETE`, 10 `
 Because the hidden answers are unavailable, we also verify internal consistency of the
 attribution model on the full dataset: for every case whose already-compliant records carry
 identifiers, the timing phase of its "policy action completed" events must agree with the
-primary-profile submission we attributed to it. **246 of 247** such events agree (the single
-disagreement is a slot-numbering artefact, not a different case), which is strong evidence
+primary-profile submission we attributed to it. **120 of 121** directly-checkable events agree after the final
+re-solve (the single disagreement is a slot-numbering artefact, not a different case), and 124 of 125
+anonymisation events plus all 10 legal-hold retention events are attributed to exactly one case, which is strong evidence
 that the timing-based attribution generalises beyond the sample.
 
 ## 4. Failures found and improvements made
@@ -87,7 +88,8 @@ that the timing-based attribution generalises beyond the sample.
 | 3 | + cadence | 1.000 / 0.906 / 0.992 / 0.966 | 13 contract violations: some states were only provable from a log exported after `audit_at` | added **absence-by-omission** from complete snapshots (SQL `snapshot_scope`, bundle collections) |
 | 4 | omission applied globally | 0.938 / 0.625 / 0.920 / 0.870 (regression) | snapshots belonging to *other* batches "proved" absence of everything they did not list | restrict omission to the case's own evidence batch (files carrying its identifiers); cite in-time files first → back to 0.906 exact, **0 violations** |
 | 5 | + state normalisation | unchanged | a delete-category record shown "identifiable" in one file and "present" in another produced a late citation | any surviving copy of a delete-category record is `PRESENT` |
-| 6 | + policy phase | unchanged on sample; test: 123/125 anonymised-analytics events attributed, 2 legal holds recovered | anonymised analytics (no identifiers) were assigned by order inside a reporting group | discovered that follow-up policy actions inherit the seconds-phase of the case's primary submission (slot *k*: +40.5 s + 29.5 s·k); attribute by phase, legal holds included |
+| 6 | + joint re-solve | unchanged on sample; test: every deletion case now has a primary account, 0 cadence outliers | the first cadence pass could release a slot without re-assigning the case that lost it (e.g. case_95 ended with no account); the trailing request of a batch is dated 11 days later than its index suggests | re-solve each reporting group jointly with cadence distance as the cost (index and index+20 both tried); report-style workflows stay fixed |
+| 7 | + policy phase | unchanged on sample; test: 123/125 anonymised-analytics events attributed, 2 legal holds recovered | anonymised analytics (no identifiers) were assigned by order inside a reporting group | discovered that follow-up policy actions inherit the seconds-phase of the case's primary submission (slot *k*: +40.5 s + 29.5 s·k); attribute by phase, legal holds included |
 
 Other defects fixed during development: pipe-separated logs with a leading `|`; free-text
 support messages leaking an e-mail while structured fields were null (now scanned);
