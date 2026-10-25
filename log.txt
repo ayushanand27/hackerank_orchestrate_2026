@@ -296,3 +296,30 @@ branch=main
 repo_root=/home/claude/hackerank_orchestrate_2026
 worktree=main
 parent_agent=none
+
+## [2026-10-25T14:10:00+05:30] Leaderboard update; export to be done from the Claude desktop app
+
+User Prompt (verbatim, secrets redacted):
+HackerRank
+Orchestrate
+Leaderboard
+Live evaluation in progress
+Final results in 02 Days 03 Hours 56 Minutes 29 Seconds
+Rankings update live as submissions are evaluated. Final results are revealed when the countdown ends.
+Rank / Participant / Chat transcript/10 / AI judge interview/30 / Output CSV/30 / Code zip/30 / Total score/100
+[30 leaderboard rows with participant names and handles REDACTED (real personal data). Top totals 88.7, 88.2, 86.2, 85.7, 84.7; chat transcript mostly 8.8-9.6 (a few 3.0); output CSV up to 29.1, commonly 27.9-28.8; code zip up to 25.5, commonly 17-25; AI interview 18.6-26.7. Showing 1-30 of 1404.]
+ABHI DEKHLE EDGE ME TO BS HACKERANK HULA HUA HAI BAKI KAAM T ISARA TU LCAUDE DESKTOP APP SE KR RHAHA HAI MRE GITUHB PE PUSH KR RHA
+
+Agent Response Summary:
+Clarified that since the work runs in the Claude desktop app, the data export must be started from that app's own Settings > Privacy > Export data, not from Edge. Read the updated leaderboard: leaders score about 9.2-9.6 on the transcript, 28.5-29.1 on output and 23-25.5 on code, so a realistic pre-interview total for this submission is around 60, with the interview deciding the rank. Advised not to let the optional export delay the one-time submission before the deadline (about 19:00 IST today).
+
+Actions:
+* none (guidance and leaderboard analysis)
+
+Context:
+tool=Claude (claude.ai app, Claude Code-based cloud agent)
+model=claude-opus-5-5
+branch=main
+repo_root=/home/claude/hackerank_orchestrate_2026
+worktree=main
+parent_agent=none
