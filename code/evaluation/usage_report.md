@@ -9,32 +9,30 @@ python3 code/main.py      # dataset/deletion_requests.csv -> output.csv
 
 ## Model usage
 
-The audit engine that writes `output.csv` is **fully deterministic and makes no LLM / VLM / API calls**.
-Every output field is derived from participant data by explicit rules, so the run is reproducible
-byte-for-byte and cannot hallucinate resources, states or evidence ids.
+The audit engine that writes `output.csv` is **fully deterministic and makes no model calls**: every
+output field is derived from participant data by explicit rules, so it is reproducible byte for byte
+and cannot hallucinate resources, states or evidence ids.
 
 | provider | model | model calls | input tokens | output tokens | total tokens | est. cost (USD) |
 |---|---|---|---|---|---|---|
 | — (none) | — | 0 | 0 | 0 | 0 | 0.00 |
-| **overall** | | **0** | **0** | **0** | **0** | **0.00** |
+| **overall** | | **0** | **0** | **0** | **0** | **0.0000** |
 
-| per request (518) | value |
-|---|---|
-| average model calls | 0 |
-| average tokens (input + output) | 0 |
-| estimated cost per request | $0.00 |
+| average | per request audited (518) | per agent-reviewed case (0) |
+|---|---|---|
+| model calls | 0.00 | 0.00 |
+| tokens (input + output) | 0 | 0 |
+| estimated cost (USD) | 0.00000 | 0.00000 |
 
-## Optional review agent (`--agent review`)
+## Review agent (`code/ghost_audit/agent/`)
 
-Mode in the final run that produced `output.csv`: **off**, so it contributed the 0 calls above. The agent (Claude tool-calling reviewer, `code/ghost_audit/agent/`) can only confirm a row or flag it for human review; it never changes `output.csv`. It needs `ANTHROPIC_API_KEY`; the default model is `claude-haiku-5-5` (`GHOST_AUDIT_MODEL` overrides it).
+Mode in the final run: **off**. The agent investigates a case through read-only tools and must submit a validated review; a deterministic gate lets it confirm a row or flag it for human review, never change `output.csv`.
 
 Offline dry run (`--agent dry-run`: the same loop, tools, validation and gate with a scripted model that reads the plan and agrees; token counts are estimates = characters / 4, no API call):
 
 | reviewed cases | model calls | est. input tokens | est. output tokens | calls / case | est. input tokens / case |
 |---|---|---|---|---|---|
 | 508 | 1016 | 1190432 | 27432 | 2.0 | 2343 |
-
-A live review that also inspects resources takes more turns (capped at 8 per case). Cost = tokens x the chosen model's price; with the agent off, cost is $0.
 
 ## Run summary
 
