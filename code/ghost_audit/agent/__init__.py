@@ -6,9 +6,11 @@ the evidence through read-only tools, then submits a structured review. Code val
 review against the evidence; the model can confirm a row or flag it for human review, but it can
 never change a status, a step or an evidence id (a deterministic gate, see ``investigator.py``).
 
-Off by default; enable with ``python3 code/main.py --agent review`` and ``ANTHROPIC_API_KEY``.
+Off by default; enable with ``python3 code/main.py --agent review`` plus ``ANTHROPIC_API_KEY``
+(Claude) or ``--agent-provider groq`` plus ``GROQ_API_KEY`` (OpenAI-compatible endpoint).
 """
 from .investigator import CaseInvestigator, ReviewResult
-from .llm_client import AnthropicClient, ScriptedClient, UsageMeter
+from .llm_client import AnthropicClient, OpenAICompatibleClient, ScriptedClient, UsageMeter
 
-__all__ = ["CaseInvestigator", "ReviewResult", "AnthropicClient", "ScriptedClient", "UsageMeter"]
+__all__ = ["CaseInvestigator", "ReviewResult", "AnthropicClient", "OpenAICompatibleClient", "ScriptedClient",
+           "UsageMeter"]

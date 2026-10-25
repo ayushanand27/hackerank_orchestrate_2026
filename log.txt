@@ -443,3 +443,43 @@ branch=main
 repo_root=/home/claude/hackerank_orchestrate_2026
 worktree=main
 parent_agent=none
+
+## [2026-10-25T16:10:00+05:30] Live review agent via Groq (key supplied by user, redacted)
+
+User Prompt (verbatim, secrets redacted):
+[REDACTED] GIVING U GROK API KEY NEITHER CLAUE GVES APO KEY IN PRO NEITHER GROK IN PRO SHOULD I GIVE DEEPSEEK OR DO U THINK GROK IS BETTER
+
+Agent Response Summary:
+Identified the key as a Groq (not xAI Grok) key and kept it out of the repository, logs and trace: it is stored in a private scratch file and passed only as the GROQ_API_KEY environment variable. Added an OpenAI-compatible function-calling client (stdlib HTTPS, rate-limit waits, custom User-Agent after a gateway 403) and an --agent-provider groq option; probed the account (model list, 8,000 tokens/min limit). A 2-case live test with openai/gpt-oss-120b passed with the model choosing its own tool calls, so the final run was started with live reviews of the first 50 deletion cases; output.csv stays byte-identical. Advised the user to revoke the key after the hackathon.
+
+Actions:
+* curl probes of the Groq models and chat-completions endpoints (key read from a private file)
+* code/ghost_audit/agent/llm_client.py: OpenAICompatibleClient + message/tool format converters; main.py --agent-provider; per-case API-error handling
+* background final run: python3 code/main.py --agent review --agent-provider groq --agent-limit 50
+
+Context:
+tool=Claude (claude.ai app, Claude Code-based cloud agent)
+model=claude-opus-5-5
+branch=main
+repo_root=/home/claude/hackerank_orchestrate_2026
+worktree=main
+parent_agent=none
+
+## [2026-10-25T16:14:00+05:30] Would more Groq keys help?
+
+User Prompt (verbatim, secrets redacted):
+IF I GIVE MORE THEN ONE GROK KEY THEN
+
+Agent Response Summary:
+Advised against it: rate limits apply per account or organisation, so extra keys from the same account add no capacity, and opening extra accounts only to get around limits can breach the provider's terms. More reviewed cases would not change output.csv or the code that the judge reads, while the deadline risk would grow; the 50-case live run is enough evidence of a working agent.
+
+Actions:
+* checked progress of the background run
+
+Context:
+tool=Claude (claude.ai app, Claude Code-based cloud agent)
+model=claude-opus-5-5
+branch=main
+repo_root=/home/claude/hackerank_orchestrate_2026
+worktree=main
+parent_agent=none

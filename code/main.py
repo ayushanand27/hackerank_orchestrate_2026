@@ -7,6 +7,7 @@ Usage (from the repository root):
     python3 code/main.py --explain case_44    # print the reasoning trail for one case
     python3 code/main.py --trail trail.jsonl  # reasoning trail for every case to another file
     python3 code/main.py --agent review       # + Claude review agent per case (needs ANTHROPIC_API_KEY)
+    python3 code/main.py --agent review --agent-provider groq   # same agent via Groq (GROQ_API_KEY)
     python3 code/main.py --agent dry-run      # the same agent loop with a scripted offline model
 
 By default there is no network access and no LLM call: every decision is derived from the
@@ -72,13 +73,14 @@ def tool_version(cmd: list[str]) -> str:
 
 
 def run_reviews(auditor: Auditor, rows: list, trails: list, requests: dict, mode: str, limit: int | None,
-                model: str | None) -> dict:
+                model: str | None, provider: str = "anthropic") -> dict:
     """Run the review agent over deletion cases; adds ``review`` to each trail. Returns agent stats."""
     from collections import Counter as _Counter
-    from ghost_audit.agent import AnthropicClient, CaseInvestigator, ScriptedClient, UsageMeter
+    from ghost_audit.agent import AnthropicClient, CaseInvestigator, OpenAICompatibleClient, ScriptedClient, UsageMeter
     meter = UsageMeter()
     if mode == "review":
-        client = AnthropicClient(model=model, meter=meter)
+        client = (OpenAICompatibleClient(model=model, meter=meter) if provider == "groq"
+                  else AnthropicClient(model=model, meter=meter))
     else:  # dry-run: scripted model that inspects the plan, then agrees
         def script(turn, _messages):
             if turn == 0:
@@ -88,17 +90,30 @@ def run_reviews(auditor: Auditor, rows: list, trails: list, requests: dict, mode
                 {"type": "tool_use", "id": f"t{turn}", "name": "submit_review",
                  "input": {"verdict": "AGREE", "concerns": [], "summary": "dry run: plan inspected"}}]}
         client = None
-    verdicts, reviewed = _Counter(), 0
+    verdicts, reviewed, api_errors, stopped = _Counter(), 0, 0, None
     for (cid, status, steps), trail in zip(rows, trails):
         if status == "NOT_APPLICABLE" or (limit is not None and reviewed >= limit):
             continue
         if mode != "review":
             client = ScriptedClient(script, meter=meter)
-        result = CaseInvestigator(auditor, client).review(requests[cid], status, steps, trail)
+        try:
+            result = CaseInvestigator(auditor, client).review(requests[cid], status, steps, trail)
+            api_errors = 0
+        except (RuntimeError, OSError) as exc:   # model API unavailable: flag the case, keep the row
+            api_errors += 1
+            trail["review"] = {"verdict": "UNCERTAIN", "flagged": True, "summary": f"model API error: {exc}"[:300]}
+            verdicts["UNCERTAIN"] += 1
+            reviewed += 1
+            if api_errors >= 3:
+                stopped = f"stopped after 3 consecutive API errors at {cid}"
+                break
+            continue
         trail["review"] = result.as_dict()
         verdicts[result.verdict] += 1
         reviewed += 1
-    return {"mode": mode, "reviewed": reviewed, "verdicts": dict(sorted(verdicts.items())),
+        print(f"[agent] {cid} {result.verdict} ({result.turns} turns)", file=sys.stderr, flush=True)
+    return {"mode": mode, "provider": provider if mode == "review" else "scripted", "reviewed": reviewed,
+            "stopped": stopped, "verdicts": dict(sorted(verdicts.items())),
             "flagged_for_human_review": sum(v for k, v in verdicts.items() if k != "AGREE"),
             "per_model": meter.as_dict()}
 
@@ -154,7 +169,9 @@ def main(argv=None):
     ap.add_argument("--agent", choices=("off", "review", "dry-run"), default="off",
                     help="optional review agent: Claude (review), scripted offline model (dry-run) or none")
     ap.add_argument("--agent-limit", type=int, default=None, help="review at most this many deletion cases")
-    ap.add_argument("--agent-model", default=None, help="model id (default: $GHOST_AUDIT_MODEL or claude-haiku-5-5)")
+    ap.add_argument("--agent-model", default=None, help="model id (default: $GHOST_AUDIT_MODEL or the provider default)")
+    ap.add_argument("--agent-provider", choices=("anthropic", "groq"), default="anthropic",
+                    help="anthropic (ANTHROPIC_API_KEY) or groq (GROQ_API_KEY, OpenAI-compatible)")
     args = ap.parse_args(argv)
 
     req_path = args.requests or os.path.join(args.dataset, "deletion_requests.csv")
@@ -175,7 +192,8 @@ def main(argv=None):
     if args.agent != "off":
         requests = {r["case_id"]: r for r in read_requests(req_path)}
         try:
-            agent_stats = run_reviews(auditor, rows, trails, requests, args.agent, args.agent_limit, args.agent_model)
+            agent_stats = run_reviews(auditor, rows, trails, requests, args.agent, args.agent_limit, args.agent_model,
+                                      args.agent_provider)
         except (RuntimeError, ImportError) as exc:
             sys.exit(f"review agent unavailable: {exc}")
         print(f"review agent ({args.agent}): {agent_stats['reviewed']} cases, verdicts {agent_stats['verdicts']}")
