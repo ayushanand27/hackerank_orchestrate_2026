@@ -1,2 +1,3 @@
-pillow>=10
-pypdf>=4
+pillow>=10        # screenshot OCR pre-processing
+pypdf>=4          # PDF text fallback when pdftotext is missing
+anthropic>=0.40   # optional: only for `--agent review`

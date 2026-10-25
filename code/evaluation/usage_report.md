@@ -9,9 +9,9 @@ python3 code/main.py      # dataset/deletion_requests.csv -> output.csv
 
 ## Model usage
 
-The agent is **fully deterministic and makes no LLM / VLM / API calls**. Every output field is
-derived from participant data by explicit rules, so the run is reproducible byte-for-byte and
-cannot hallucinate resources, states or evidence ids.
+The audit engine that writes `output.csv` is **fully deterministic and makes no LLM / VLM / API calls**.
+Every output field is derived from participant data by explicit rules, so the run is reproducible
+byte-for-byte and cannot hallucinate resources, states or evidence ids.
 
 | provider | model | model calls | input tokens | output tokens | total tokens | est. cost (USD) |
 |---|---|---|---|---|---|---|
@@ -23,6 +23,18 @@ cannot hallucinate resources, states or evidence ids.
 | average model calls | 0 |
 | average tokens (input + output) | 0 |
 | estimated cost per request | $0.00 |
+
+## Optional review agent (`--agent review`)
+
+Mode in the final run that produced `output.csv`: **off**, so it contributed the 0 calls above. The agent (Claude tool-calling reviewer, `code/ghost_audit/agent/`) can only confirm a row or flag it for human review; it never changes `output.csv`. It needs `ANTHROPIC_API_KEY`; the default model is `claude-haiku-5-5` (`GHOST_AUDIT_MODEL` overrides it).
+
+Offline dry run (`--agent dry-run`: the same loop, tools, validation and gate with a scripted model that reads the plan and agrees; token counts are estimates = characters / 4, no API call):
+
+| reviewed cases | model calls | est. input tokens | est. output tokens | calls / case | est. input tokens / case |
+|---|---|---|---|---|---|
+| 508 | 1016 | 1190432 | 27432 | 2.0 | 2343 |
+
+A live review that also inspects resources takes more turns (capped at 8 per case). Cost = tokens x the chosen model's price; with the agent off, cost is $0.
 
 ## Run summary
 
@@ -47,11 +59,11 @@ cannot hallucinate resources, states or evidence ids.
 
 | stage | wall time (s) |
 |---|---|
-| load evidence, identities, activity | 0.2 |
-| intent + identity + linking | 1.8 |
-| joint timing attribution | 1.47 |
-| per-case state + planning | 0.4 |
-| **total (warm, OCR cached)** | **3.9** (≈ 8 ms / request) |
+| load evidence, identities, activity | 0.14 |
+| intent + identity + linking | 1.45 |
+| joint timing attribution | 1.14 |
+| per-case state + planning | 0.3 |
+| **total (warm, OCR cached)** | **3.05** (≈ 6 ms / request) |
 | total (cold, OCR from scratch) | 48.4 — output byte-identical (SHA-256 compared) |
 
 ## Development-time AI usage (not part of the inference pipeline)

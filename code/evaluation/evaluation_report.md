@@ -7,7 +7,7 @@ python3 code/main.py                              # output.csv (+ audit trail, r
 python3 code/evaluation/main.py                   # sample + custom metrics, contract check -> latest_metrics.md
 python3 code/evaluation/ablation.py               # strategy comparison (~2 min)          -> ablation.md
 python3 code/evaluation/consistency.py            # unsupervised check on all requests     -> consistency.md
-python3 -m unittest discover -s code/tests        # 57 unit / integration tests
+python3 -m unittest discover -s code/tests        # 66 unit / integration tests
 ```
 
 The evaluation has five parts: (1) the 32 public sample requests scored against
@@ -129,7 +129,7 @@ What the comparison shows:
 
 ## 4. Unit and integration tests
 
-`python3 -m unittest discover -s code/tests` — 57 tests, ~10 s, all passing.
+`python3 -m unittest discover -s code/tests` — 66 tests, ~10 s, all passing.
 
 | file | covers |
 |---|---|
@@ -141,6 +141,7 @@ What the comparison shows:
 | `test_state_and_planner.py` | effective-state rules per category, COMPLETE plans cite evidence, INCOMPLETE plans (findings → remediation → verification, empty evidence for future steps) |
 | `test_attribution.py` | circular phase distance, time windows, cadence formula, batch-offset fitting recovers a planted offset and rejects noise |
 | `test_contract.py` | the output-contract validator itself: a valid file passes; late / unknown evidence, evidence on future steps, findings without evidence, wrong states, numbering, order, extra keys, status rules and missing rows are each reported (mutation tests) |
+| `test_agent.py` | the optional review agent with a scripted model (no network): tool loop, review accepted only when valid, unknown / late evidence and foreign resources rejected, text without a tool call and the turn cap end in UNCERTAIN, the gate never changes a plan, request text is passed as data, tools never reveal identifier values |
 | `test_engine_scenarios.py` | the 11 custom scenarios end to end; each technique is load-bearing for its scenario; audit-trail content |
 | `test_submission.py` | (needs `dataset/`) fresh run passes the contract, reproduces `output.csv` byte for byte, never cites evidence captured after `audit_at`, sample status accuracy, determinism across runs |
 
@@ -183,6 +184,7 @@ generalises beyond the 32 sample cases.
 | 6 | + joint re-solve | unchanged on sample; every evaluation case gets a primary profile | the first cadence pass could release a slot without re-assigning the case that lost it (case_95 ended with no account); a batch's trailing request is dated later than its index suggests | re-solve each reporting group jointly with cadence distance as cost (index and index+20); identifier-linked and explicitly reported accounts stay fixed |
 | 7 | + policy phase | unchanged on sample; 124/125 anonymised analytics attributed | anonymised analytics (no identifiers) were assigned by order inside a reporting group | follow-up policy actions inherit the seconds phase of the case's primary submission (slot *k*: +40.5 s + 29.5 s·k) |
 | 8 | refactor + ablation | unchanged (output byte-identical, `cmp`) | the ablation exposed an empty `INCOMPLETE` plan (a contract violation) whenever a requester e-mail matched no identity; custom case 901 did not really need the identity history; lineage was never exercised | unknown requester e-mails are audited by the e-mail itself; case 901 strengthened; cases 906–911 added so every technique has a scenario that only it solves |
+| 9 | + review agent | unchanged (output byte-identical; dry run over 508 deletion cases: every review validated, 0 rows changed) | the engine had no place for a model to check its work, and nothing marked rows a human should look at | optional Claude reviewer with read-only tools, turn and retry caps, code-side validation of every review, and a gate that can only flag (`code/ghost_audit/agent/`) |
 
 Other defects fixed during development: pipe-separated logs with a leading `|`; free-text
 support messages leaking an e-mail while structured fields were null (now scanned); tombstone /

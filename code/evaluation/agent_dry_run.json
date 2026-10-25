@@ -1,0 +1,74 @@
+{
+  "requests_audited": 518,
+  "requests_in_joint_context": 550,
+  "status_distribution": {
+    "COMPLETE": 153,
+    "INCOMPLETE": 355,
+    "NOT_APPLICABLE": 10
+  },
+  "steps_total": 3259,
+  "steps_per_request": 6.29,
+  "operations": {
+    "ANONYMIZE_RECORD": 73,
+    "BLOCK_RESTORE": 26,
+    "DELETE_RECORD": 384,
+    "DISABLE_DATA_FLOW": 113,
+    "REDACT_RECORD": 126,
+    "REPORT_ACTIVE_DATA_FLOW": 113,
+    "REPORT_EXPOSED_PII": 199,
+    "REPORT_REMAINING_RECORD": 384,
+    "REPORT_RESTORE_RISK": 26,
+    "VERIFY_DATA_FLOW_DISABLED": 146,
+    "VERIFY_RECORD_ABSENT": 828,
+    "VERIFY_RECORD_ANONYMIZED": 191,
+    "VERIFY_RECORD_PRESENT": 427,
+    "VERIFY_RECORD_REDACTED": 164,
+    "VERIFY_RESTORE_BLOCKED": 59
+  },
+  "evidence_files": {
+    "image": 11,
+    "json": 28,
+    "log": 26,
+    "pdf": 4,
+    "sql": 24,
+    "txt": 1
+  },
+  "observations": 2893,
+  "documents": 15,
+  "coverage_listings": 252,
+  "ocr_calls": 0,
+  "ocr_cache_hits": 11,
+  "parse_failures": 0,
+  "activities": 4011,
+  "identities": 850,
+  "timings_s": {
+    "load": 0.18,
+    "linking": 1.81,
+    "attribution": 1.11,
+    "audit": 0.31
+  },
+  "wall_time_s": 4.1,
+  "llm_calls": 0,
+  "input_tokens": 0,
+  "output_tokens": 0,
+  "cost_usd": 0.0,
+  "agent": {
+    "mode": "dry-run",
+    "reviewed": 508,
+    "verdicts": {
+      "AGREE": 508
+    },
+    "flagged_for_human_review": 0,
+    "per_model": {
+      "scripted": {
+        "calls": 1016,
+        "input_tokens": 1190432,
+        "output_tokens": 27432
+      }
+    }
+  },
+  "python": "3.13.17",
+  "tesseract": "tesseract 5.3.4",
+  "pdftotext": "pdftotext version 24.02.0",
+  "output_sha256": "fb90a787bc4991b475429a992c95eeab5f9910563ddfbc0369d9228b8c16fec9"
+}

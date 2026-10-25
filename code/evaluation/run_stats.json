@@ -42,16 +42,19 @@
   "activities": 4011,
   "identities": 850,
   "timings_s": {
-    "load": 0.2,
-    "linking": 1.8,
-    "attribution": 1.47,
-    "audit": 0.4
+    "load": 0.14,
+    "linking": 1.45,
+    "attribution": 1.14,
+    "audit": 0.3
   },
-  "wall_time_s": 3.9,
+  "wall_time_s": 3.05,
   "llm_calls": 0,
   "input_tokens": 0,
   "output_tokens": 0,
   "cost_usd": 0.0,
+  "agent": {
+    "mode": "off"
+  },
   "python": "3.13.17",
   "tesseract": "tesseract 5.3.4",
   "pdftotext": "pdftotext version 24.02.0",

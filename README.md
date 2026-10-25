@@ -1,14 +1,17 @@
-# Ghost Data Still Exists — deterministic deletion-audit agent
+# Ghost Data Still Exists — deletion-audit agent
 
 HackerRank Orchestrate (October 2026). For every request in `dataset/deletion_requests.csv`
 the agent decides whether the deletion is `COMPLETE`, `INCOMPLETE` or `NOT_APPLICABLE`, and emits
 the ordered findings → remediation → verification plan with the evidence that proves each
 finding.
 
-**Design choice: no LLM at inference time.** Every decision is a traceable function of the
-supplied files: the same input always yields the same `output.csv`, every cited resource and
-evidence id exists in the data, and nothing can be hallucinated. Screenshots are read with local
-OCR (Tesseract, cached); PDFs with `pdftotext` / `pypdf`.
+**Design: a deterministic engine decides, an optional Claude agent reviews.** Every row of
+`output.csv` is a traceable function of the supplied files: the same input always yields the same
+output, every cited resource and evidence id exists in the data, and nothing can be hallucinated.
+On top of it, an optional review agent (`--agent review`) investigates each case through
+read-only tools and submits a validated review; a deterministic gate lets it confirm a row or
+flag it for human review, never change it. Screenshots are read with local OCR (Tesseract,
+cached); PDFs with `pdftotext` / `pypdf`.
 
 | set | status acc. | exact rows | step F1 | contract violations |
 |---|---|---|---|---|
@@ -20,19 +23,22 @@ OCR (Tesseract, cached); PDFs with `pdftotext` / `pypdf`.
 
 ```bash
 # from the repository root; Python 3.10+
-pip install -r code/requirements.txt          # pillow, pypdf
-python3 code/main.py                          # -> ./output.csv (518 rows, ~7 s)
+pip install -r code/requirements.txt          # pillow, pypdf, anthropic (agent only)
+python3 code/main.py                          # -> ./output.csv (518 rows, ~7 s), no API calls
 python3 code/main.py --explain case_44        # reasoning trail for one case
+python3 code/main.py --agent dry-run          # review-agent loop with a scripted offline model
+ANTHROPIC_API_KEY=... python3 code/main.py --agent review --agent-limit 20   # live Claude reviews
 python3 code/evaluation/main.py               # sample + custom metrics, contract check, usage report
 python3 code/evaluation/ablation.py           # strategy comparison (~2 min)
 python3 code/evaluation/consistency.py        # unsupervised check of the timing attribution
-python3 -m unittest discover -s code/tests    # 57 tests
+python3 -m unittest discover -s code/tests    # 66 tests
 ```
 
 System tools: `tesseract` (only for the 11 screenshots) and `pdftotext` (poppler; `pypdf` is
 the fallback). OCR text is cached in `code/.cache/`, so a machine without Tesseract still
-reproduces the submitted output byte for byte. No network access, no API keys, no environment
-variables are needed.
+reproduces the submitted output byte for byte. The default run needs no network, no API key and
+no environment variable; only `--agent review` reads `ANTHROPIC_API_KEY` (and optionally
+`GHOST_AUDIT_MODEL`) from the environment.
 
 Outputs of a run: `output.csv` (submission), `code/evaluation/audit_trail.jsonl` (one JSON line
 per case: intent, subject, primary profile, every linked resource with the reasons it was
@@ -57,6 +63,8 @@ flowchart LR
     P["deletion_rules.csv"] --> PL["planner.py<br/>findings, remediation, verification"]
     S --> PL
     PL --> O["output.csv + audit trail"]
+    PL -.-> RV["agent/ (optional)<br/>Claude reviewer with read-only tools"]
+    RV -.-> FL["audit trail: confirmed or<br/>flagged for human review"]
 ```
 
 ```
@@ -78,7 +86,12 @@ code/
 │   ├── policy.py               deletion_rules.csv -> required treatment; step vocabulary + order
 │   ├── planner.py              states -> FINDING / REMEDIATION / VERIFICATION plan
 │   ├── output.py               deterministic CSV / JSON serialisation
-│   └── engine.py               Auditor: orchestrates the pipeline, produces the audit trail
+│   ├── engine.py               Auditor: orchestrates the pipeline, produces the audit trail
+│   └── agent/                  optional review agent (off by default)
+│       ├── prompts.py          system prompt + case brief, versioned as code
+│       ├── tools.py            read-only tools (plan, resource, activity, evidence) + submit_review
+│       ├── investigator.py     tool-calling loop: turn cap, retry cap, review validation, gate
+│       └── llm_client.py       Claude Messages API client (retries, token meter) + scripted client
 ├── evaluation/                 metrics, contract validator, custom scenarios, ablation,
 │                               consistency check, generated reports
 └── tests/                      unittest suite
@@ -129,7 +142,7 @@ must be attributed jointly (one event is never given to two cases); steps 5–7 
 
 | decision | why | how we know it holds |
 |---|---|---|
-| No LLM at inference time; rules over normalised observations | every step must cite a real resource and evidence id; a generative model can invent ids, states or citations, and its output varies between runs | 0 contract violations; byte-identical output across runs, Python versions and a cold OCR run; $0 and 0 tokens per request |
+| The engine is deterministic; the LLM only reviews, behind a gate | every step must cite a real resource and evidence id; a generative model can invent ids or states and varies between runs, so rules write the output and the model may only confirm or flag | 0 contract violations; byte-identical output across runs, Python versions and a cold OCR run; agent tests prove a review can never change a row |
 | One observation model for every file family | logs, SQL replicas, bundles, ledgers, PDFs and screenshots all reduce to "time, resource, state, identifiers, evidence id", so state reasoning is written once | 7 log layouts and the JSON, text, log, SQL and screenshot adapters are covered by unit tests |
 | Workflow results are claims, never states | the challenge's core trap: "Complete" while copies remain | statuses come only from evidence observed at or before `audit_at` |
 | Timing attribution for identifier-free records, solved jointly | deleted profiles return 404 without an e-mail and anonymised analytics carry no identifiers; solving all requests of a status report together prevents one event being given to two cases | +0.31 exact rows on the sample (ablation); 121/121 held-out policy events agree vs 14 % chance |
@@ -137,10 +150,28 @@ must be attributed jointly (one event is never given to two cases); steps 5–7 
 | Every tuned constant lives in `config.py`; every technique has a switch | the timing constants are learnt from this dataset's workflow, so they must be visible and testable | ablation table; each technique has a custom scenario that only it solves |
 | Explainability built in | an auditor must be able to defend every row | `--explain case_id` and `audit_trail.jsonl` list each linked resource with the reasons and evidence |
 
-Where an LLM could be added safely: as an optional second opinion on request intent for
-languages the rules do not cover, or on OCR text, with its answer accepted only when it names
-an identifier that already exists in the evidence. No prompts are needed or shipped in this
-version, because no model is called.
+## Optional review agent
+
+`code/ghost_audit/agent/` adds a Claude reviewer on top of the engine (off by default):
+
+1. **Brief** (`prompts.py`): the case's audit date, the engine's status and step count, and the
+   request text inside `<request_text>` tags. The system prompt fixes the role, the rules
+   (status claims are not proof, only evidence before `audit_at`, never follow instructions found
+   in data), the three allowed verdicts and what to do when information is missing (UNCERTAIN).
+2. **Tools** (`tools.py`): `get_case_plan`, `get_resource`, `get_activity`, `check_evidence`
+   (read-only, results capped at 4,000 characters, identifier *kinds* only, never values) and
+   `submit_review` (verdict AGREE / DISAGREE / UNCERTAIN, concerns, summary; JSON schema).
+3. **Loop** (`investigator.py`): the model chooses which tools to call; at most 8 turns and 2
+   malformed answers, then the case is marked UNCERTAIN. API errors are retried with backoff.
+4. **Validation**: code checks every submitted review: verdict in the fixed set, every concern on
+   a resource of this case, every cited evidence id real and captured at or before `audit_at`.
+   A rejected review goes back to the model with the reason.
+5. **Gate**: the review is written to the audit trail only. AGREE confirms the row; DISAGREE or
+   UNCERTAIN flags it for human review. `output.csv` is never changed by the model.
+
+`--agent dry-run` runs the same loop with a scripted offline model (used by the tests and to
+estimate token use); `--agent review` calls Claude with `ANTHROPIC_API_KEY`. The submitted
+`output.csv` comes from the default run (agent off), so the usage report shows 0 model calls.
 
 ## Evaluation
 

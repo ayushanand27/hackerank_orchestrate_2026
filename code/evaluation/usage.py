@@ -32,9 +32,9 @@ def model_usage_section(warm: dict) -> list[str]:
     return [
         "## Model usage",
         "",
-        "The agent is **fully deterministic and makes no LLM / VLM / API calls**. Every output field is",
-        "derived from participant data by explicit rules, so the run is reproducible byte-for-byte and",
-        "cannot hallucinate resources, states or evidence ids.",
+        "The audit engine that writes `output.csv` is **fully deterministic and makes no LLM / VLM / API calls**.",
+        "Every output field is derived from participant data by explicit rules, so the run is reproducible",
+        "byte-for-byte and cannot hallucinate resources, states or evidence ids.",
         "",
         "| provider | model | model calls | input tokens | output tokens | total tokens | est. cost (USD) |",
         "|---|---|---|---|---|---|---|",
@@ -104,7 +104,39 @@ def compute_section(warm: dict, cold: dict | None) -> list[str]:
     return lines + [""]
 
 
-def render(warm: dict, cold: dict | None = None) -> str:
+def agent_section(warm: dict, dry: dict | None) -> list[str]:
+    """The optional review agent: its mode in the final run and the offline dry-run measurement."""
+    mode = warm.get("agent", {}).get("mode", "off")
+    lines = [
+        "## Optional review agent (`--agent review`)",
+        "",
+        f"Mode in the final run that produced `output.csv`: **{mode}**, so it contributed the 0 calls above. "
+        "The agent (Claude tool-calling reviewer, `code/ghost_audit/agent/`) can only confirm a row or flag it "
+        "for human review; it never changes `output.csv`. It needs `ANTHROPIC_API_KEY`; the default model is "
+        "`claude-haiku-5-5` (`GHOST_AUDIT_MODEL` overrides it).",
+        "",
+    ]
+    if dry:
+        a = dry["agent"]
+        per = next(iter(a["per_model"].values()), {"calls": 0, "input_tokens": 0, "output_tokens": 0})
+        n = max(a["reviewed"], 1)
+        lines += [
+            "Offline dry run (`--agent dry-run`: the same loop, tools, validation and gate with a scripted model "
+            "that reads the plan and agrees; token counts are estimates = characters / 4, no API call):",
+            "",
+            "| reviewed cases | model calls | est. input tokens | est. output tokens | calls / case | est. input tokens / case |",
+            "|---|---|---|---|---|---|",
+            f"| {a['reviewed']} | {per['calls']} | {per['input_tokens']} | {per['output_tokens']} | "
+            f"{per['calls'] / n:.1f} | {per['input_tokens'] / n:.0f} |",
+            "",
+            "A live review that also inspects resources takes more turns (capped at 8 per case). Cost = tokens x the "
+            "chosen model's price; with the agent off, cost is $0.",
+            "",
+        ]
+    return lines
+
+
+def render(warm: dict, cold: dict | None = None, dry: dict | None = None) -> str:
     """Full usage_report.md text from the warm-run (and optional cold-run) statistics."""
     lines = [
         "# Usage report — final full-dataset run",
@@ -117,7 +149,7 @@ def render(warm: dict, cold: dict | None = None) -> str:
         "```",
         "",
     ]
-    lines += model_usage_section(warm) + run_summary_section(warm) + compute_section(warm, cold)
+    lines += model_usage_section(warm) + agent_section(warm, dry) + run_summary_section(warm) + compute_section(warm, cold)
     lines += [
         "## Development-time AI usage (not part of the inference pipeline)",
         "",
@@ -134,7 +166,7 @@ def main():
     warm = _load("run_stats.json")
     if warm is None:
         raise SystemExit("run python3 code/main.py first (writes code/evaluation/run_stats.json)")
-    text = render(warm, _load("run_stats_cold.json"))
+    text = render(warm, _load("run_stats_cold.json"), _load("agent_dry_run.json"))
     with open(os.path.join(HERE, "usage_report.md"), "w", encoding="utf-8") as fh:
         fh.write(text)
     print(text)

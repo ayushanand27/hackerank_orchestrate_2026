@@ -115,7 +115,7 @@ def main(argv=None):
     warm = usage._load("run_stats.json")
     if warm:
         with open(os.path.join(HERE, "usage_report.md"), "w", encoding="utf-8") as fh:
-            fh.write(usage.render(warm, usage._load("run_stats_cold.json")))
+            fh.write(usage.render(warm, usage._load("run_stats_cold.json"), usage._load("agent_dry_run.json")))
         print("usage_report.md re-rendered from run_stats.json")
 
 

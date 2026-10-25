@@ -6,8 +6,13 @@ Usage (from the repository root):
     python3 code/main.py --requests dataset/sample_deletion_requests.csv --out sample_pred.csv
     python3 code/main.py --explain case_44    # print the reasoning trail for one case
     python3 code/main.py --trail trail.jsonl  # reasoning trail for every case to another file
+    python3 code/main.py --agent review       # + Claude review agent per case (needs ANTHROPIC_API_KEY)
+    python3 code/main.py --agent dry-run      # the same agent loop with a scripted offline model
 
-No network access and no LLM calls: every decision is derived from the supplied files.
+By default there is no network access and no LLM call: every decision is derived from the
+supplied files. The optional review agent (code/ghost_audit/agent) investigates each case with
+read-only tools and can only confirm a row or flag it for human review; it never changes
+output.csv.
 A run over the evaluation requests (the default) also writes
   code/evaluation/audit_trail.jsonl  - one JSON line per case: intent, subject, primary profile,
                                        every linked resource with the reasons it was linked,
@@ -66,7 +71,40 @@ def tool_version(cmd: list[str]) -> str:
         return "not installed"
 
 
-def run_stats(auditor: Auditor, rows: list, out_path: str, wall: float, n_context: int) -> dict:
+def run_reviews(auditor: Auditor, rows: list, trails: list, requests: dict, mode: str, limit: int | None,
+                model: str | None) -> dict:
+    """Run the review agent over deletion cases; adds ``review`` to each trail. Returns agent stats."""
+    from collections import Counter as _Counter
+    from ghost_audit.agent import AnthropicClient, CaseInvestigator, ScriptedClient, UsageMeter
+    meter = UsageMeter()
+    if mode == "review":
+        client = AnthropicClient(model=model, meter=meter)
+    else:  # dry-run: scripted model that inspects the plan, then agrees
+        def script(turn, _messages):
+            if turn == 0:
+                return {"stop_reason": "tool_use", "content": [
+                    {"type": "tool_use", "id": "t0", "name": "get_case_plan", "input": {}}]}
+            return {"stop_reason": "tool_use", "content": [
+                {"type": "tool_use", "id": f"t{turn}", "name": "submit_review",
+                 "input": {"verdict": "AGREE", "concerns": [], "summary": "dry run: plan inspected"}}]}
+        client = None
+    verdicts, reviewed = _Counter(), 0
+    for (cid, status, steps), trail in zip(rows, trails):
+        if status == "NOT_APPLICABLE" or (limit is not None and reviewed >= limit):
+            continue
+        if mode != "review":
+            client = ScriptedClient(script, meter=meter)
+        result = CaseInvestigator(auditor, client).review(requests[cid], status, steps, trail)
+        trail["review"] = result.as_dict()
+        verdicts[result.verdict] += 1
+        reviewed += 1
+    return {"mode": mode, "reviewed": reviewed, "verdicts": dict(sorted(verdicts.items())),
+            "flagged_for_human_review": sum(v for k, v in verdicts.items() if k != "AGREE"),
+            "per_model": meter.as_dict()}
+
+
+def run_stats(auditor: Auditor, rows: list, out_path: str, wall: float, n_context: int,
+              agent: dict | None = None) -> dict:
     """Statistics of this run for usage_report.md (counts, timings, tool versions, output hash)."""
     ops, statuses, n_steps = Counter(), Counter(), 0
     for _, status, steps in rows:
@@ -95,6 +133,7 @@ def run_stats(auditor: Auditor, rows: list, out_path: str, wall: float, n_contex
         "timings_s": {k: round(v, 2) for k, v in auditor.timings.items()},
         "wall_time_s": round(wall, 2),
         "llm_calls": 0, "input_tokens": 0, "output_tokens": 0, "cost_usd": 0.0,
+        "agent": agent or {"mode": "off"},
         "python": platform.python_version(),
         "tesseract": tool_version(["tesseract", "--version"]),
         "pdftotext": tool_version(["pdftotext", "-v"]),
@@ -112,6 +151,10 @@ def main(argv=None):
     ap.add_argument("--explain", default=None, help="case_id to print a reasoning trail for")
     ap.add_argument("--trail", default=None, help="JSONL reasoning trail (default: written for the evaluation run)")
     ap.add_argument("--stats", default=None, help="run-statistics JSON (default: written for the evaluation run)")
+    ap.add_argument("--agent", choices=("off", "review", "dry-run"), default="off",
+                    help="optional review agent: Claude (review), scripted offline model (dry-run) or none")
+    ap.add_argument("--agent-limit", type=int, default=None, help="review at most this many deletion cases")
+    ap.add_argument("--agent-model", default=None, help="model id (default: $GHOST_AUDIT_MODEL or claude-haiku-5-5)")
     args = ap.parse_args(argv)
 
     req_path = args.requests or os.path.join(args.dataset, "deletion_requests.csv")
@@ -128,6 +171,14 @@ def main(argv=None):
         if args.explain == r["case_id"]:
             print(json.dumps(dict(trail, request=r, steps=steps), indent=2, ensure_ascii=False))
     write_output(args.out, rows)
+    agent_stats = None
+    if args.agent != "off":
+        requests = {r["case_id"]: r for r in read_requests(req_path)}
+        try:
+            agent_stats = run_reviews(auditor, rows, trails, requests, args.agent, args.agent_limit, args.agent_model)
+        except (RuntimeError, ImportError) as exc:
+            sys.exit(f"review agent unavailable: {exc}")
+        print(f"review agent ({args.agent}): {agent_stats['reviewed']} cases, verdicts {agent_stats['verdicts']}")
     trail_path = args.trail or (DEFAULT_TRAIL if args.requests is None else None)
     if trail_path:
         with open(trail_path, "w", encoding="utf-8") as fh:
@@ -137,7 +188,12 @@ def main(argv=None):
     stats_path = args.stats or (DEFAULT_STATS if args.requests is None else None)
     if stats_path:
         with open(stats_path, "w", encoding="utf-8") as fh:
-            json.dump(run_stats(auditor, rows, args.out, wall, len(context)), fh, indent=2)
+            stats = run_stats(auditor, rows, args.out, wall, len(context), agent_stats)
+            if args.agent == "review":
+                per = agent_stats["per_model"].values()
+                stats.update(llm_calls=sum(m["calls"] for m in per), input_tokens=sum(m["input_tokens"] for m in per),
+                             output_tokens=sum(m["output_tokens"] for m in per))
+            json.dump(stats, fh, indent=2)
             fh.write("\n")
     counts = Counter(s for _, s, _ in rows)
     print(f"wrote {len(rows)} rows to {args.out} in {wall:.1f}s  {dict(counts)}")
