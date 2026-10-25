@@ -29,11 +29,11 @@ python3 code/main.py                          # -> ./output.csv (518 rows, ~7 s)
 python3 code/main.py --explain case_44        # reasoning trail for one case
 python3 code/main.py --agent dry-run          # review-agent loop with a scripted offline model
 ANTHROPIC_API_KEY=... python3 code/main.py --agent review --agent-limit 20   # live Claude reviews
-GROQ_API_KEY=... python3 code/main.py --agent review --agent-provider groq --agent-limit 50   # final run
+GROQ_API_KEYS=k1,k2,k3 python3 code/main.py --agent review --agent-provider groq --agent-limit 150   # final run
 python3 code/evaluation/main.py               # sample + custom metrics, contract check, usage report
 python3 code/evaluation/ablation.py           # strategy comparison (~2 min)
 python3 code/evaluation/consistency.py        # unsupervised check of the timing attribution
-python3 -m unittest discover -s code/tests    # 69 tests
+python3 -m unittest discover -s code/tests    # 70 tests
 ```
 
 System tools: `tesseract` (only for the 11 screenshots) and `pdftotext` (poppler; `pypdf` is
@@ -93,6 +93,7 @@ code/
 │       ├── prompts.py          system prompt + case brief, versioned as code
 │       ├── tools.py            read-only tools (plan, resource, activity, evidence) + submit_review
 │       ├── investigator.py     tool-calling loop: turn cap, retry cap, review validation, gate
+│       ├── runner.py           parallel reviews: one worker per API key, shared usage meter
 │       └── llm_client.py       Anthropic client, OpenAI-compatible client (Groq), scripted client;
 │                               retries, rate-limit waits, token meter
 ├── evaluation/                 metrics, contract validator, custom scenarios, ablation,
@@ -175,9 +176,11 @@ must be attributed jointly (one event is never given to two cases); steps 5–7 
 `--agent dry-run` runs the same loop with a scripted offline model (used by the tests and to
 estimate token use); `--agent review` calls Claude (`ANTHROPIC_API_KEY`) or, with
 `--agent-provider groq`, an OpenAI-compatible endpoint (`GROQ_API_KEY`, default model
-`openai/gpt-oss-120b`). The final run reviewed the first 50 deletion cases live on Groq (the
-free-tier limit of 8,000 tokens a minute sets that size); its calls, tokens, cost and verdicts are
-in `code/evaluation/usage_report.md`. `output.csv` is byte-identical with the agent on or off.
+`openai/gpt-oss-120b`). With several keys in `GROQ_API_KEYS`, `runner.py` gives each key its own
+worker and rate-limit budget. The final run reviewed the first 150 deletion cases live on Groq
+with three workers (the free-tier limit of 8,000 tokens a minute per key sets that size); its
+calls, tokens, cost and verdicts are in `code/evaluation/usage_report.md`. `output.csv` is
+byte-identical with the agent on or off.
 
 ## Evaluation
 
