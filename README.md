@@ -41,6 +41,24 @@ linked, its category / state / evidence, and the steps) and `code/evaluation/run
 
 ## Architecture
 
+```mermaid
+flowchart LR
+    R["deletion_requests.csv"] --> I["intent.py<br/>does the text authorise deletion?"]
+    I -- no --> NA["NOT_APPLICABLE, empty steps"]
+    I -- yes --> ID["identity.py<br/>current + historical identifiers"]
+    E["evidence: logs, SQL, JSON,<br/>PDF, screenshots"] --> EV["evidence.py<br/>normalised observations"]
+    A["system_activity.csv"] --> L
+    EV --> L["linking.py + documents.py<br/>identifier-grounded links"]
+    ID --> L
+    L --> AT["attribution.py<br/>timing: primary profile,<br/>batch cadence, policy phase"]
+    A --> AT
+    AT --> S["state.py<br/>state at audit_at"]
+    L --> S
+    P["deletion_rules.csv"] --> PL["planner.py<br/>findings, remediation, verification"]
+    S --> PL
+    PL --> O["output.csv + audit trail"]
+```
+
 ```
 code/
 ├── main.py                     entry point: load → prepare (joint) → audit each case → output.csv
@@ -106,6 +124,23 @@ must be attributed jointly (one event is never given to two cases); steps 5–7 
    anonymise), then verification; within a phase by the operation table, then `system_id`,
    `resource_id`. Remediation and post-remediation checks cite `""`; `COMPLETE` verifications cite
    the in-time evidence that proves the state (files captured after `audit_at` are never cited).
+
+## Design decisions and trade-offs
+
+| decision | why | how we know it holds |
+|---|---|---|
+| No LLM at inference time; rules over normalised observations | every step must cite a real resource and evidence id; a generative model can invent ids, states or citations, and its output varies between runs | 0 contract violations; byte-identical output across runs, Python versions and a cold OCR run; $0 and 0 tokens per request |
+| One observation model for every file family | logs, SQL replicas, bundles, ledgers, PDFs and screenshots all reduce to "time, resource, state, identifiers, evidence id", so state reasoning is written once | 7 log layouts and the JSON, text, log, SQL and screenshot adapters are covered by unit tests |
+| Workflow results are claims, never states | the challenge's core trap: "Complete" while copies remain | statuses come only from evidence observed at or before `audit_at` |
+| Timing attribution for identifier-free records, solved jointly | deleted profiles return 404 without an e-mail and anonymised analytics carry no identifiers; solving all requests of a status report together prevents one event being given to two cases | +0.31 exact rows on the sample (ablation); 121/121 held-out policy events agree vs 14 % chance |
+| Absence by omission only from the case's own evidence batch | a complete snapshot proves absence, but only for the people it covers | applying it globally was measured as a regression (exact rows 0.906 → 0.625) and reverted |
+| Every tuned constant lives in `config.py`; every technique has a switch | the timing constants are learnt from this dataset's workflow, so they must be visible and testable | ablation table; each technique has a custom scenario that only it solves |
+| Explainability built in | an auditor must be able to defend every row | `--explain case_id` and `audit_trail.jsonl` list each linked resource with the reasons and evidence |
+
+Where an LLM could be added safely: as an optional second opinion on request intent for
+languages the rules do not cover, or on OCR text, with its answer accepted only when it names
+an identifier that already exists in the evidence. No prompts are needed or shipped in this
+version, because no model is called.
 
 ## Evaluation
 

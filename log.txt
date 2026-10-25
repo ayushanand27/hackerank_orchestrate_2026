@@ -323,3 +323,24 @@ branch=main
 repo_root=/home/claude/hackerank_orchestrate_2026
 worktree=main
 parent_agent=none
+
+## [2026-10-25T14:12:00+05:30] README design-decisions section; export manifest received
+
+User Prompt (verbatim, secrets redacted):
+LIKE I WANT TO HV FUL LNI THE PARTS BEFORE INTERVIEW
+(then attached the claude.ai data-export manifest JSON listing six download links: light_metadata, projects, memories, frames, claude_code_cloud, conversations; link tokens not reproduced here)
+
+Agent Response Summary:
+Checked whether output could still be raised: only 3 of 507 attributed primary profiles came from the plain timing fallback, and all 3 are fully determined (single or status-unique candidate), so the output was left unchanged. Added an architecture diagram (validated with mmdc) and a design-decisions table to README for the code judge, docs only. The manifest only holds sign-in-protected links, so the user must download claude_code_cloud-000.zip (this session is a cloud Claude Code session) and upload it; the other export parts hold unrelated chats and personal memory and should not be submitted.
+
+Actions:
+* confidence breakdown of primary-account attribution from audit_trail.jsonl (identifier 235, cadence 259, timing-only 3, none 11)
+* README.md: mermaid architecture diagram + design decisions and trade-offs; rebuilt code.zip
+
+Context:
+tool=Claude (claude.ai app, Claude Code-based cloud agent)
+model=claude-opus-5-5
+branch=main
+repo_root=/home/claude/hackerank_orchestrate_2026
+worktree=main
+parent_agent=none
