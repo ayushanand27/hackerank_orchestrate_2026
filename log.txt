@@ -604,3 +604,39 @@ branch=main
 repo_root=/home/claude/hackerank_orchestrate_2026
 worktree=main
 parent_agent=none
+
+## [2026-10-25T16:52:00+05:30] Map files to the HackerRank upload form
+
+User Prompt (verbatim, secrets redacted):
+|Orchestrate
+Submission closes in:02:24:20
+1
+Upload Code
+2
+Upload Output
+3
+Upload Transcript
+Upload your code
+Upload your complete solution as a ZIP file including a README.
+What to include
+* Source code - your complete working project
+* README - setup instructions and approach overview
+Solution ZIP *
+Click to upload
+Drag and drop or click to browse
+(Max 50 MB)
+Submit Solution | HackerRank JIS FORM ME ISNE MANGA HAI USI FORM ME DENA HAI OUTPUT OKAY AND README TRANSCRIPT WGRH SB
+
+Agent Response Summary:
+Mapped the three form steps to files: step 1 code.zip (README.md at its root with setup and approach, plus code/ with the source and the evaluation reports; about 190 KB against a 50 MB limit), step 2 output.csv, step 3 log.txt. Confirmed the README is inside the zip rather than a separate upload and that agent-trace.zip has no slot in this form. Reported live-run progress: 17 reviews (14 AGREE, 3 UNCERTAIN), with one provider "Parsing failed" 400 response seen that the end-of-shard second pass retries.
+
+Actions:
+* checked the zip structure (README.md, code/main.py, code/requirements.txt, code/evaluation reports) and the live-run log
+
+Context:
+tool=Claude (claude.ai app, Claude Code-based cloud agent)
+model=claude-opus-5-5
+branch=main
+repo_root=/home/claude/hackerank_orchestrate_2026
+worktree=main
+parent_agent=none
