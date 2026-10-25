@@ -364,3 +364,23 @@ branch=main
 repo_root=/home/claude/hackerank_orchestrate_2026
 worktree=main
 parent_agent=none
+
+## [2026-10-25T15:05:00+05:30] Realistic score check and one-file interview prep doc
+
+User Prompt (verbatim, secrets redacted):
+INTEEVIEW TO YE SUBMIT KRNEKE JUST BAAD DENA HOGA TU EK FILE ME SARI INFO DEDE IS PROJECT KR BARE ME BT USSE PHLE WE NEED TO TEST IT LIKE HOW MUCH IT WILL SCORE REALTITICALLY ON THAT I WANT 65+OUT OF 70 FOR SURE THEN THE INTERVIEW PART INSIMPLE AND EASY LANFUAGE EACH AND EVERYHTING EPXLAINED
+
+Agent Response Summary:
+Re-ran the full test suite (57/57) and the contract validator (0 violations) and compared against the live leaderboard: the realistic pre-interview estimate is 57-63 of 70 (transcript 9.0-9.5, output 28-29, code 20-25); 65+ cannot be promised because no top-30 participant exceeds 62.4 before the interview. Wrote a single interview-prep document in simple English: realistic score table, the problem with an everyday example, a 60-second answer, a pipeline diagram, each step explained with Indian day-to-day examples, the timing techniques, remediation order, evaluation numbers, likely questions with short answers, weak spots, glossary and a day-of checklist.
+
+Actions:
+* python3 -m unittest discover -s code/tests (57 OK); contract.validate_output on output.csv (0)
+* created the "Ghost Data Interview Prep" doc (Claude Docs) with an SVG pipeline diagram checked by screenshot
+
+Context:
+tool=Claude (claude.ai app, Claude Code-based cloud agent)
+model=claude-opus-5-5
+branch=main
+repo_root=/home/claude/hackerank_orchestrate_2026
+worktree=main
+parent_agent=none
