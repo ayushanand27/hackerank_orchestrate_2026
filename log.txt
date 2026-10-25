@@ -563,3 +563,24 @@ branch=main
 repo_root=/home/claude/hackerank_orchestrate_2026
 worktree=main
 parent_agent=none
+
+## [2026-10-25T16:42:00+05:30] Live status; second pass for API-failed reviews
+
+User Prompt (verbatim, secrets redacted):
+AB KAISA WORK HO RHA KYA FAIL HO RHA KIAISA RPEOETS AA RHI BTA
+
+Agent Response Summary:
+Reported the live status: 8 reviews done (6 AGREE, 2 UNCERTAIN from API errors at the very first call). Reproducing one failed case alone passed, so the failures are transient provider errors under parallel load. Widened the retryable HTTP statuses (408, 409, 413, 425, 429, 498, 499, 5xx), made each worker give API-failed cases a second pass after its shard, and printed the error reason in the progress log; added a test. Restarted the final run (three workers, 120 cases); output.csv is unchanged.
+
+Actions:
+* diag: one-case live review of case_35 (passed, AGREE in 4 turns)
+* llm_client.py RETRYABLE_STATUS; runner.py second pass + api_error marker + error note in the log; test_agent.py second-pass test
+* restarted: GROQ_API_KEYS=[REDACTED x3] python3 code/main.py --agent review --agent-provider groq --agent-limit 120
+
+Context:
+tool=Claude (claude.ai app, Claude Code-based cloud agent)
+model=claude-opus-5-5
+branch=main
+repo_root=/home/claude/hackerank_orchestrate_2026
+worktree=main
+parent_agent=none

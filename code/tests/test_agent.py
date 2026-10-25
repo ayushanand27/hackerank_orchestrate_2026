@@ -190,6 +190,22 @@ class ParallelRunner(CustomDataset):
         self.assertEqual(meter.as_dict()["m"]["calls"], 10)
         self.assertEqual([len(c.requests) for c in clients], [6, 4])
 
+    def test_api_error_gets_a_second_pass(self):
+        from ghost_audit.agent import review_cases
+
+        class Flaky(ScriptedClient):
+            """Fails the very first call, then behaves."""
+            def create(self, system, messages, tools):
+                if not getattr(self, "failed", False):
+                    self.failed = True
+                    raise RuntimeError("model API error 498: capacity")
+                return super().create(system, messages, tools)
+
+        st, steps, trail = self.auditor.audit(self.reqs["case_901"])
+        reviews, verdicts = review_cases(self.auditor, [(self.reqs["case_901"], st, steps, trail)],
+                                         [Flaky([reply(review())])])
+        self.assertEqual(reviews["case_901"]["verdict"], "AGREE")
+
 
 if __name__ == "__main__":
     unittest.main()

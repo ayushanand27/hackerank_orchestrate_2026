@@ -89,6 +89,8 @@ GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
 GROQ_DEFAULT_MODEL = "openai/gpt-oss-120b"
 MAX_RATE_LIMIT_WAITS = 12
 PACE_MIN_TOKENS = 4000       # below this many tokens left in the minute window, wait for the reset
+# transient HTTP statuses: timeouts, too-large-for-this-minute, rate limits, provider capacity, 5xx
+RETRYABLE_STATUS = {408, 409, 413, 425, 429, 498, 499, 500, 502, 503, 504}
 
 
 class ToolCallFormatError(Exception):
@@ -197,7 +199,7 @@ class OpenAICompatibleClient:
                 detail = err.read()[:500].decode("utf-8", "replace")
                 if err.code == 400 and "tool_use_failed" in detail:
                     raise ToolCallFormatError(detail) from None
-                if err.code not in (429, 500, 502, 503) or attempt == MAX_RATE_LIMIT_WAITS:
+                if err.code not in RETRYABLE_STATUS or attempt == MAX_RATE_LIMIT_WAITS:
                     raise RuntimeError(f"model API error {err.code}: {detail[:300]}") from None
                 wait = _seconds(err.headers.get("retry-after")) or 2 ** min(attempt, 5)
                 time.sleep(min(max(wait, 1.0), 60.0))
