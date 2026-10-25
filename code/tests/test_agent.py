@@ -93,6 +93,18 @@ class Agent(CustomDataset):
         self.assertEqual(len(client.requests), MAX_TURNS)
         self.assertIn("iteration cap", res.summary)
 
+    def test_last_turn_nudge_is_sent(self):
+        from ghost_audit.agent.prompts import LAST_TURN_NUDGE
+        res, client, _ = self.run_case([reply(call("get_case_plan"))])
+        last_user = client.requests[MAX_TURNS - 1]["messages"][-1]["content"]
+        self.assertTrue(any(b.get("type") == "text" and b["text"] == LAST_TURN_NUDGE for b in last_user))
+
+    def test_unparseable_tool_call_is_retried(self):
+        failed = {"stop_reason": "tool_use_failed", "content": [{"type": "text", "text": "(could not parse)"}]}
+        res, _, _ = self.run_case([failed, reply(review())])
+        self.assertEqual(res.verdict, "AGREE")
+        self.assertEqual(res.turns, 2)
+
     def test_gate_never_changes_the_plan(self):
         disagree = review("DISAGREE", [{"resource_id": "search_9911", "issue": "x", "evidence_id": "evidence_901"}])
         res, _, before = self.run_case([reply(disagree)])

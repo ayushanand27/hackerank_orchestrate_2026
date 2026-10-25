@@ -14,7 +14,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass, field
 
-from .prompts import CASE_BRIEF, PROMPT_VERSION, RETRY_NUDGE, REVIEWER_SYSTEM
+from .prompts import CASE_BRIEF, LAST_TURN_NUDGE, PROMPT_VERSION, RETRY_NUDGE, REVIEWER_SYSTEM
 from .tools import TOOL_SPECS, VERDICTS, CaseTools, EvidenceIndex
 
 MAX_TURNS = 8
@@ -124,6 +124,8 @@ class CaseInvestigator:
                     text, is_error = tools.run(name, args)
                     results.append({"type": "tool_result", "tool_use_id": call["id"], "content": text,
                                     "is_error": is_error})
+            if turn == MAX_TURNS - 2:   # last turn coming: ask for the decision instead of more digging
+                results.append({"type": "text", "text": LAST_TURN_NUDGE})
             messages.append({"role": "user", "content": results})
         result.summary = f"iteration cap ({MAX_TURNS} turns) reached"
         return result

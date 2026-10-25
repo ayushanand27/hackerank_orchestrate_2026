@@ -1,7 +1,7 @@
 """Prompts of the review agent, kept as code (versioned, tested, no prompt text elsewhere)."""
 from __future__ import annotations
 
-PROMPT_VERSION = "review-v1"
+PROMPT_VERSION = "review-v2"
 
 REVIEWER_SYSTEM = """You are a data-deletion audit reviewer for a commerce platform.
 
@@ -41,3 +41,6 @@ Start with get_case_plan, then inspect the resources you need."""
 
 RETRY_NUDGE = ("Your last answer did not call submit_review with valid arguments ({problem}). "
                "Call submit_review now with verdict AGREE, DISAGREE or UNCERTAIN.")
+
+LAST_TURN_NUDGE = ("This is your last turn. Call submit_review now with what you have found; use UNCERTAIN "
+                   "if the evidence is not enough.")

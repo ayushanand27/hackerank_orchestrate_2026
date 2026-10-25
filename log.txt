@@ -542,3 +542,24 @@ branch=main
 repo_root=/home/claude/hackerank_orchestrate_2026
 worktree=main
 parent_agent=none
+
+## [2026-10-25T16:36:00+05:30] Progress check; harden the agent and restart the live run
+
+User Prompt (verbatim, secrets redacted):
+KITNA HO GYA AND HAMAMRA ARCHTEICTURE WGRH SB SOLID HONA VHAHIYE TO SCORE MAMXIUM
+
+Agent Response Summary:
+After 25 live reviews, 4 cases had ended in API errors (0 turns) and 3 at the 8-turn cap, which would weaken the agent's evidence. A single-case diagnosis showed the errors were transient (the same case passed alone), so the client was hardened: it now paces itself from the rate-limit headers, waits up to 12 times on 429/5xx, turns a provider-side malformed tool call into a bounded retry, and the loop sends a last-turn nudge to submit (prompt review-v2). Added two tests, stopped the old run and restarted the final run with three workers on the first 120 deletion cases; output.csv remains byte-identical.
+
+Actions:
+* diagnosis: one-case live review of case_43 with a separate key (passed: AGREE in 3 turns)
+* llm_client.py: _pace, _seconds, ToolCallFormatError, 12 rate-limit waits; investigator.py + prompts.py: LAST_TURN_NUDGE; test_agent.py: 2 tests (15 agent tests)
+* restarted: GROQ_API_KEYS=[REDACTED x3] python3 code/main.py --agent review --agent-provider groq --agent-limit 120
+
+Context:
+tool=Claude (claude.ai app, Claude Code-based cloud agent)
+model=claude-opus-5-5
+branch=main
+repo_root=/home/claude/hackerank_orchestrate_2026
+worktree=main
+parent_agent=none

@@ -87,7 +87,31 @@ class AnthropicClient:
 
 GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
 GROQ_DEFAULT_MODEL = "openai/gpt-oss-120b"
-MAX_RATE_LIMIT_WAITS = 6
+MAX_RATE_LIMIT_WAITS = 12
+PACE_MIN_TOKENS = 4000       # below this many tokens left in the minute window, wait for the reset
+
+
+class ToolCallFormatError(Exception):
+    """The provider rejected the model's tool call as malformed (HTTP 400 tool_use_failed)."""
+
+
+def _seconds(value) -> float | None:
+    """Parse '7.66s', '1m26.4s', '2' (seconds) into a float; None when absent or unreadable."""
+    if not value:
+        return None
+    total, num = 0.0, ""
+    for ch in str(value):
+        if ch.isdigit() or ch == ".":
+            num += ch
+        elif ch == "m" and num:
+            total, num = total + float(num) * 60, ""
+        elif ch == "s" and num:
+            total, num = total + float(num), ""
+        elif ch == "h" and num:
+            total, num = total + float(num) * 3600, ""
+    if num:
+        total += float(num)
+    return total or None
 
 
 def to_openai_messages(system: str, messages: list) -> list:
@@ -110,6 +134,9 @@ def to_openai_messages(system: str, messages: list) -> list:
             for b in content:
                 if b.get("type") == "tool_result":
                     out.append({"role": "tool", "tool_call_id": b["tool_use_id"], "content": b["content"]})
+            notes = [b["text"] for b in content if b.get("type") == "text"]
+            if notes:
+                out.append({"role": "user", "content": "\n".join(notes)})
     return out
 
 
@@ -154,7 +181,8 @@ class OpenAICompatibleClient:
         self.max_tokens = max_tokens
 
     def _post(self, body: dict) -> dict:
-        """POST with waits on rate limits (429, honouring retry-after) and transient 5xx errors."""
+        """POST with waits on rate limits (429, honouring retry-after) and transient 5xx errors; also
+        paces itself when the per-minute token budget reported in the response headers runs low."""
         data = json.dumps(body).encode()
         for attempt in range(MAX_RATE_LIMIT_WAITS + 1):
             req = urllib.request.Request(self.url, data=data, method="POST", headers={
@@ -162,24 +190,41 @@ class OpenAICompatibleClient:
                 "User-Agent": "ghost-audit/1.0"})  # the default urllib agent is blocked by some API gateways
             try:
                 with urllib.request.urlopen(req, timeout=120) as resp:
-                    return json.loads(resp.read())
+                    payload = json.loads(resp.read())
+                    self._pace(resp.headers)
+                    return payload
             except urllib.error.HTTPError as err:
+                detail = err.read()[:500].decode("utf-8", "replace")
+                if err.code == 400 and "tool_use_failed" in detail:
+                    raise ToolCallFormatError(detail) from None
                 if err.code not in (429, 500, 502, 503) or attempt == MAX_RATE_LIMIT_WAITS:
-                    raise RuntimeError(f"model API error {err.code}: {err.read()[:300]!r}") from None
-                wait = float(err.headers.get("retry-after") or 2 ** attempt)
+                    raise RuntimeError(f"model API error {err.code}: {detail[:300]}") from None
+                wait = _seconds(err.headers.get("retry-after")) or 2 ** min(attempt, 5)
                 time.sleep(min(max(wait, 1.0), 60.0))
             except urllib.error.URLError:
                 if attempt == MAX_RATE_LIMIT_WAITS:
                     raise
-                time.sleep(2 ** attempt)
+                time.sleep(2 ** min(attempt, 5))
         raise RuntimeError("unreachable")
 
+    @staticmethod
+    def _pace(headers):
+        """Sleep until the token window resets when fewer than PACE_MIN_TOKENS remain."""
+        remaining = headers.get("x-ratelimit-remaining-tokens")
+        if remaining is not None and remaining.isdigit() and int(remaining) < PACE_MIN_TOKENS:
+            time.sleep(min(_seconds(headers.get("x-ratelimit-reset-tokens")) or 5.0, 60.0))
+
     def create(self, system: str, messages: list, tools: list) -> dict:
-        """One model turn in OpenAI format, normalised back."""
+        """One model turn in OpenAI format, normalised back.  A tool call the provider could not parse
+        comes back as a turn without tool calls, so the agent loop asks again (bounded)."""
         body = {"model": self.model, "temperature": 0, "max_tokens": self.max_tokens,
                 "messages": to_openai_messages(system, messages), "tools": to_openai_tools(tools),
                 "tool_choice": "auto"}
-        resp = from_openai_response(self._post(body))
+        try:
+            resp = from_openai_response(self._post(body))
+        except ToolCallFormatError:
+            return {"stop_reason": "tool_use_failed", "usage": {"input_tokens": 0, "output_tokens": 0},
+                    "content": [{"type": "text", "text": "(the provider could not parse the tool call)"}]}
         self.meter.add(self.model, resp["usage"])
         return resp
 
