@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 import os
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -33,12 +34,14 @@ class UsageMeter:
     calls: dict = field(default_factory=lambda: defaultdict(int))
     input_tokens: dict = field(default_factory=lambda: defaultdict(int))
     output_tokens: dict = field(default_factory=lambda: defaultdict(int))
+    lock: object = field(default_factory=threading.Lock, repr=False)
 
     def add(self, model: str, usage: dict):
-        """Record one call's token usage."""
-        self.calls[model] += 1
-        self.input_tokens[model] += int(usage.get("input_tokens", 0))
-        self.output_tokens[model] += int(usage.get("output_tokens", 0))
+        """Record one call's token usage (thread-safe: parallel reviewers share one meter)."""
+        with self.lock:
+            self.calls[model] += 1
+            self.input_tokens[model] += int(usage.get("input_tokens", 0))
+            self.output_tokens[model] += int(usage.get("output_tokens", 0))
 
     def as_dict(self) -> dict:
         """Per-model totals as plain dicts."""
@@ -141,8 +144,8 @@ class OpenAICompatibleClient:
     """Function-calling chat completions over HTTPS (stdlib only); Groq by default."""
 
     def __init__(self, model: str | None = None, meter: UsageMeter | None = None, max_tokens: int = 1024,
-                 url: str = GROQ_URL, key_env: str = "GROQ_API_KEY"):
-        self.api_key = os.environ.get(key_env)
+                 url: str = GROQ_URL, key_env: str = "GROQ_API_KEY", api_key: str | None = None):
+        self.api_key = api_key or os.environ.get(key_env)
         if not self.api_key:
             raise RuntimeError(f"{key_env} is not set; the review agent needs it (or use --agent off)")
         self.url = url

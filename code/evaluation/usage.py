@@ -25,31 +25,56 @@ def _load(name):
         return json.load(fh)
 
 
+# USD per 1M tokens (input, output). GroqCloud on-demand price for openai/gpt-oss-120b as listed in
+# October 2026 (https://www.morphllm.com/groq-pricing, citing the GroqCloud model docs).
+PRICES_PER_MTOK = {"openai/gpt-oss-120b": (0.15, 0.60)}
+PROVIDER_NAMES = {"groq": "Groq (OpenAI-compatible API)", "anthropic": "Anthropic"}
+
+
+def cost_usd(model: str, inp: int, out: int) -> float | None:
+    """Estimated cost of a model's tokens, or None when its price is unknown."""
+    price = PRICES_PER_MTOK.get(model)
+    return None if price is None else (inp * price[0] + out * price[1]) / 1e6
+
+
 def model_usage_section(warm: dict) -> list[str]:
-    """Provider / model / calls / tokens / cost tables (overall and per request)."""
+    """Provider / model / calls / tokens / cost tables, per model and overall, plus per-request averages."""
     n = warm["requests_audited"]
-    tokens = warm["input_tokens"] + warm["output_tokens"]
-    return [
+    agent = warm.get("agent", {})
+    live = agent.get("mode") == "review"
+    per_model = agent.get("per_model", {}) if live else {}
+    provider = PROVIDER_NAMES.get(agent.get("provider", ""), agent.get("provider", ""))
+    rows, total_cost = [], 0.0
+    for model, u in per_model.items():
+        c = cost_usd(model, u["input_tokens"], u["output_tokens"])
+        total_cost += c or 0.0
+        rows.append(f"| {provider} | `{model}` | {u['calls']} | {u['input_tokens']} | {u['output_tokens']} | "
+                    f"{u['input_tokens'] + u['output_tokens']} | {'%.4f' % c if c is not None else 'n/a'} |")
+    calls = sum(u["calls"] for u in per_model.values())
+    inp = sum(u["input_tokens"] for u in per_model.values())
+    out = sum(u["output_tokens"] for u in per_model.values())
+    reviewed = max(agent.get("reviewed", 0), 1)
+    lines = [
         "## Model usage",
         "",
-        "The audit engine that writes `output.csv` is **fully deterministic and makes no LLM / VLM / API calls**.",
-        "Every output field is derived from participant data by explicit rules, so the run is reproducible",
-        "byte-for-byte and cannot hallucinate resources, states or evidence ids.",
-        "",
-        "| provider | model | model calls | input tokens | output tokens | total tokens | est. cost (USD) |",
-        "|---|---|---|---|---|---|---|",
-        f"| — (none) | — | {warm['llm_calls']} | {warm['input_tokens']} | {warm['output_tokens']} | "
-        f"{tokens} | {warm['cost_usd']:.2f} |",
-        f"| **overall** | | **{warm['llm_calls']}** | **{warm['input_tokens']}** | **{warm['output_tokens']}** | "
-        f"**{tokens}** | **{warm['cost_usd']:.2f}** |",
-        "",
-        f"| per request ({n}) | value |",
-        "|---|---|",
-        f"| average model calls | {warm['llm_calls'] / n:g} |",
-        f"| average tokens (input + output) | {tokens / n:g} |",
-        f"| estimated cost per request | ${warm['cost_usd'] / n:.2f} |",
-        "",
+        "The audit engine that writes `output.csv` is **fully deterministic and makes no model calls**: every",
+        "output field is derived from participant data by explicit rules, so it is reproducible byte for byte",
+        "and cannot hallucinate resources, states or evidence ids.",
     ]
+    if live:
+        lines += ["", f"In the final run the **review agent ran live** on {agent.get('reviewed', 0)} of the deletion "
+                  "cases (`--agent review --agent-limit`, the first cases in case order, which include the hand-made "
+                  "single-artifact cases). All model calls below come from that agent; they cannot change `output.csv`."]
+    lines += ["", "| provider | model | model calls | input tokens | output tokens | total tokens | est. cost (USD) |",
+              "|---|---|---|---|---|---|---|"]
+    lines += rows or ["| — (none) | — | 0 | 0 | 0 | 0 | 0.00 |"]
+    lines += [f"| **overall** | | **{calls}** | **{inp}** | **{out}** | **{inp + out}** | **{total_cost:.4f}** |", "",
+              "| average | per request audited (" + str(n) + ") | per agent-reviewed case (" + str(agent.get('reviewed', 0)) + ") |",
+              "|---|---|---|",
+              f"| model calls | {calls / n:.2f} | {calls / reviewed:.2f} |",
+              f"| tokens (input + output) | {(inp + out) / n:.0f} | {(inp + out) / reviewed:.0f} |",
+              f"| estimated cost (USD) | {total_cost / n:.5f} | {total_cost / reviewed:.5f} |", ""]
+    return lines
 
 
 def run_summary_section(warm: dict) -> list[str]:
@@ -104,22 +129,48 @@ def compute_section(warm: dict, cold: dict | None) -> list[str]:
     return lines + [""]
 
 
+def _trail_reviews() -> list:
+    """Reviews recorded in audit_trail.jsonl by the last run (empty when the agent was off)."""
+    path = os.path.join(HERE, "audit_trail.jsonl")
+    if not os.path.exists(path):
+        return []
+    with open(path, encoding="utf-8") as fh:
+        return [(t["case_id"], t["review"]) for t in map(json.loads, fh) if "review" in t]
+
+
 def agent_section(warm: dict, dry: dict | None) -> list[str]:
-    """The optional review agent: its mode in the final run and the offline dry-run measurement."""
-    mode = warm.get("agent", {}).get("mode", "off")
-    lines = [
-        "## Optional review agent (`--agent review`)",
-        "",
-        f"Mode in the final run that produced `output.csv`: **{mode}**, so it contributed the 0 calls above. "
-        "The agent (Claude tool-calling reviewer, `code/ghost_audit/agent/`) can only confirm a row or flag it "
-        "for human review; it never changes `output.csv`. It needs `ANTHROPIC_API_KEY`; the default model is "
-        "`claude-haiku-5-5` (`GHOST_AUDIT_MODEL` overrides it).",
-        "",
-    ]
+    """The review agent: live results of the final run (if any) and the offline dry-run measurement."""
+    agent = warm.get("agent", {})
+    mode = agent.get("mode", "off")
+    lines = ["## Review agent (`code/ghost_audit/agent/`)", "",
+             f"Mode in the final run: **{mode}**. The agent investigates a case through read-only tools and must "
+             "submit a validated review; a deterministic gate lets it confirm a row or flag it for human review, "
+             "never change `output.csv`.", ""]
+    reviews = _trail_reviews() if mode == "review" else []
+    if reviews:
+        turns = [r.get("turns", 0) for _, r in reviews]
+        tools = {}
+        for _, r in reviews:
+            for t in r.get("tool_calls", []):
+                tools[t] = tools.get(t, 0) + 1
+        flagged = [(cid, r) for cid, r in reviews if r.get("flagged")]
+        rejected = sum(len(r.get("rejected", [])) for _, r in reviews)
+        lines += ["| live review result | value |", "|---|---|",
+                  f"| cases reviewed | {len(reviews)} |",
+                  f"| verdicts | {', '.join(f'{k} {v}' for k, v in agent.get('verdicts', {}).items())} |",
+                  f"| flagged for human review | {len(flagged)} |",
+                  f"| average turns per case (cap 8) | {sum(turns) / len(turns):.1f} |",
+                  f"| tool calls chosen by the model | {', '.join(f'{k} {v}' for k, v in sorted(tools.items()))} |",
+                  f"| reviews rejected by validation and re-asked | {rejected} |",
+                  "| rows of output.csv changed by the agent | 0 (gate) |", ""]
+        if flagged:
+            lines += ["Flagged cases (the model's own summary):", ""]
+            lines += [f"- `{cid}` {r.get('verdict')}: {r.get('summary', '')[:200]}" for cid, r in flagged[:10]]
+            lines.append("")
     if dry:
         a = dry["agent"]
         per = next(iter(a["per_model"].values()), {"calls": 0, "input_tokens": 0, "output_tokens": 0})
-        n = max(a["reviewed"], 1)
+        k = max(a["reviewed"], 1)
         lines += [
             "Offline dry run (`--agent dry-run`: the same loop, tools, validation and gate with a scripted model "
             "that reads the plan and agrees; token counts are estimates = characters / 4, no API call):",
@@ -127,10 +178,7 @@ def agent_section(warm: dict, dry: dict | None) -> list[str]:
             "| reviewed cases | model calls | est. input tokens | est. output tokens | calls / case | est. input tokens / case |",
             "|---|---|---|---|---|---|",
             f"| {a['reviewed']} | {per['calls']} | {per['input_tokens']} | {per['output_tokens']} | "
-            f"{per['calls'] / n:.1f} | {per['input_tokens'] / n:.0f} |",
-            "",
-            "A live review that also inspects resources takes more turns (capped at 8 per case). Cost = tokens x the "
-            "chosen model's price; with the agent off, cost is $0.",
+            f"{per['calls'] / k:.1f} | {per['input_tokens'] / k:.0f} |",
             "",
         ]
     return lines

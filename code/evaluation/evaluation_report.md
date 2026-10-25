@@ -7,7 +7,7 @@ python3 code/main.py                              # output.csv (+ audit trail, r
 python3 code/evaluation/main.py                   # sample + custom metrics, contract check -> latest_metrics.md
 python3 code/evaluation/ablation.py               # strategy comparison (~2 min)          -> ablation.md
 python3 code/evaluation/consistency.py            # unsupervised check on all requests     -> consistency.md
-python3 -m unittest discover -s code/tests        # 66 unit / integration tests
+python3 -m unittest discover -s code/tests        # 69 unit / integration tests
 ```
 
 The evaluation has five parts: (1) the 32 public sample requests scored against
@@ -129,7 +129,7 @@ What the comparison shows:
 
 ## 4. Unit and integration tests
 
-`python3 -m unittest discover -s code/tests` — 66 tests, ~10 s, all passing.
+`python3 -m unittest discover -s code/tests` — 69 tests, ~10 s, all passing.
 
 | file | covers |
 |---|---|
@@ -141,7 +141,7 @@ What the comparison shows:
 | `test_state_and_planner.py` | effective-state rules per category, COMPLETE plans cite evidence, INCOMPLETE plans (findings → remediation → verification, empty evidence for future steps) |
 | `test_attribution.py` | circular phase distance, time windows, cadence formula, batch-offset fitting recovers a planted offset and rejects noise |
 | `test_contract.py` | the output-contract validator itself: a valid file passes; late / unknown evidence, evidence on future steps, findings without evidence, wrong states, numbering, order, extra keys, status rules and missing rows are each reported (mutation tests) |
-| `test_agent.py` | the optional review agent with a scripted model (no network): tool loop, review accepted only when valid, unknown / late evidence and foreign resources rejected, text without a tool call and the turn cap end in UNCERTAIN, the gate never changes a plan, request text is passed as data, tools never reveal identifier values |
+| `test_agent.py` | the review agent with a scripted model (no network): OpenAI-format conversion for Groq, tool loop, review accepted only when valid, unknown / late evidence and foreign resources rejected, text without a tool call and the turn cap end in UNCERTAIN, the gate never changes a plan, request text is passed as data, tools never reveal identifier values |
 | `test_engine_scenarios.py` | the 11 custom scenarios end to end; each technique is load-bearing for its scenario; audit-trail content |
 | `test_submission.py` | (needs `dataset/`) fresh run passes the contract, reproduces `output.csv` byte for byte, never cites evidence captured after `audit_at`, sample status accuracy, determinism across runs |
 

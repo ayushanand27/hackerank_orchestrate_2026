@@ -11,6 +11,7 @@ Off by default; enable with ``python3 code/main.py --agent review`` plus ``ANTHR
 """
 from .investigator import CaseInvestigator, ReviewResult
 from .llm_client import AnthropicClient, OpenAICompatibleClient, ScriptedClient, UsageMeter
+from .runner import review_cases
 
 __all__ = ["CaseInvestigator", "ReviewResult", "AnthropicClient", "OpenAICompatibleClient", "ScriptedClient",
-           "UsageMeter"]
+           "UsageMeter", "review_cases"]

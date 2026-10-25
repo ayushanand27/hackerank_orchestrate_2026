@@ -483,3 +483,62 @@ branch=main
 repo_root=/home/claude/hackerank_orchestrate_2026
 worktree=main
 parent_agent=none
+
+## [2026-10-25T16:14:00+05:30] Second Groq key supplied (redacted)
+
+User Prompt (verbatim, secrets redacted):
+[REDACTED]
+
+Agent Response Summary:
+The user interrupted a pending commit and pasted a second Groq key. Did not store or use it yet and waited for the user's instruction, as the interruption asked.
+
+Actions:
+* checked progress of the single-key background run
+
+Context:
+tool=Claude (claude.ai app, Claude Code-based cloud agent)
+model=claude-opus-5-5
+branch=main
+repo_root=/home/claude/hackerank_orchestrate_2026
+worktree=main
+parent_agent=none
+
+## [2026-10-25T16:15:00+05:30] Third Groq key supplied (redacted)
+
+User Prompt (verbatim, secrets redacted):
+[REDACTED]
+
+Agent Response Summary:
+Acknowledged the third key without echoing it and proposed a plan: parallel reviews with one worker per key so about 150 cases get a live review before the deadline, output.csv unchanged. Repeated the caution that separate accounts made only to raise rate limits are the user's terms-of-service risk, and asked for a go-ahead. A stop-hook request to commit was deferred because the user had asked to wait.
+
+Actions:
+* none (waited for the user)
+
+Context:
+tool=Claude (claude.ai app, Claude Code-based cloud agent)
+model=claude-opus-5-5
+branch=main
+repo_root=/home/claude/hackerank_orchestrate_2026
+worktree=main
+parent_agent=none
+
+## [2026-10-25T16:17:00+05:30] Go: parallel live reviews with three keys, full testing
+
+User Prompt (verbatim, secrets redacted):
+GO AND TEST COMPELTEL KRKE SARI FILES BUEJ DENA
+
+Agent Response Summary:
+Stored the two extra keys in private scratch files (never in the repository) and verified all three keys against the models endpoint. Added a parallel runner (code/ghost_audit/agent/runner.py: one worker and one rate-limit budget per key, shared thread-safe usage meter) driven by GROQ_API_KEYS, plus a test for it; the dry run reproduces the earlier numbers exactly. Stopped the single-key run after 7 cases and started the final run with three workers and live reviews of the first 150 deletion cases.
+
+Actions:
+* code/ghost_audit/agent/runner.py; llm_client.py (api_key parameter, locked meter); main.py run_reviews uses review_cases
+* code/tests/test_agent.py: shared fixture, ParallelRunner test (13 agent tests)
+* background: GROQ_API_KEYS=[REDACTED x3] python3 code/main.py --agent review --agent-provider groq --agent-limit 150
+
+Context:
+tool=Claude (claude.ai app, Claude Code-based cloud agent)
+model=claude-opus-5-5
+branch=main
+repo_root=/home/claude/hackerank_orchestrate_2026
+worktree=main
+parent_agent=none

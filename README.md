@@ -8,8 +8,9 @@ finding.
 **Design: a deterministic engine decides, an optional Claude agent reviews.** Every row of
 `output.csv` is a traceable function of the supplied files: the same input always yields the same
 output, every cited resource and evidence id exists in the data, and nothing can be hallucinated.
-On top of it, an optional review agent (`--agent review`) investigates each case through
-read-only tools and submits a validated review; a deterministic gate lets it confirm a row or
+On top of it, a review agent (`--agent review`; Claude through the Anthropic API, or any
+OpenAI-compatible endpoint such as Groq) investigates each case through read-only tools and
+submits a validated review; a deterministic gate lets it confirm a row or
 flag it for human review, never change it. Screenshots are read with local OCR (Tesseract,
 cached); PDFs with `pdftotext` / `pypdf`.
 
@@ -28,17 +29,18 @@ python3 code/main.py                          # -> ./output.csv (518 rows, ~7 s)
 python3 code/main.py --explain case_44        # reasoning trail for one case
 python3 code/main.py --agent dry-run          # review-agent loop with a scripted offline model
 ANTHROPIC_API_KEY=... python3 code/main.py --agent review --agent-limit 20   # live Claude reviews
+GROQ_API_KEY=... python3 code/main.py --agent review --agent-provider groq --agent-limit 50   # final run
 python3 code/evaluation/main.py               # sample + custom metrics, contract check, usage report
 python3 code/evaluation/ablation.py           # strategy comparison (~2 min)
 python3 code/evaluation/consistency.py        # unsupervised check of the timing attribution
-python3 -m unittest discover -s code/tests    # 66 tests
+python3 -m unittest discover -s code/tests    # 69 tests
 ```
 
 System tools: `tesseract` (only for the 11 screenshots) and `pdftotext` (poppler; `pypdf` is
 the fallback). OCR text is cached in `code/.cache/`, so a machine without Tesseract still
 reproduces the submitted output byte for byte. The default run needs no network, no API key and
-no environment variable; only `--agent review` reads `ANTHROPIC_API_KEY` (and optionally
-`GHOST_AUDIT_MODEL`) from the environment.
+no environment variable; only `--agent review` reads `ANTHROPIC_API_KEY` or `GROQ_API_KEY`
+(and optionally `GHOST_AUDIT_MODEL`) from the environment. Keys are never written to files.
 
 Outputs of a run: `output.csv` (submission), `code/evaluation/audit_trail.jsonl` (one JSON line
 per case: intent, subject, primary profile, every linked resource with the reasons it was
@@ -91,7 +93,8 @@ code/
 │       ├── prompts.py          system prompt + case brief, versioned as code
 │       ├── tools.py            read-only tools (plan, resource, activity, evidence) + submit_review
 │       ├── investigator.py     tool-calling loop: turn cap, retry cap, review validation, gate
-│       └── llm_client.py       Claude Messages API client (retries, token meter) + scripted client
+│       └── llm_client.py       Anthropic client, OpenAI-compatible client (Groq), scripted client;
+│                               retries, rate-limit waits, token meter
 ├── evaluation/                 metrics, contract validator, custom scenarios, ablation,
 │                               consistency check, generated reports
 └── tests/                      unittest suite
@@ -170,8 +173,11 @@ must be attributed jointly (one event is never given to two cases); steps 5–7 
    UNCERTAIN flags it for human review. `output.csv` is never changed by the model.
 
 `--agent dry-run` runs the same loop with a scripted offline model (used by the tests and to
-estimate token use); `--agent review` calls Claude with `ANTHROPIC_API_KEY`. The submitted
-`output.csv` comes from the default run (agent off), so the usage report shows 0 model calls.
+estimate token use); `--agent review` calls Claude (`ANTHROPIC_API_KEY`) or, with
+`--agent-provider groq`, an OpenAI-compatible endpoint (`GROQ_API_KEY`, default model
+`openai/gpt-oss-120b`). The final run reviewed the first 50 deletion cases live on Groq (the
+free-tier limit of 8,000 tokens a minute sets that size); its calls, tokens, cost and verdicts are
+in `code/evaluation/usage_report.md`. `output.csv` is byte-identical with the agent on or off.
 
 ## Evaluation
 

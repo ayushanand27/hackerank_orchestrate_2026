@@ -74,14 +74,20 @@ def tool_version(cmd: list[str]) -> str:
 
 def run_reviews(auditor: Auditor, rows: list, trails: list, requests: dict, mode: str, limit: int | None,
                 model: str | None, provider: str = "anthropic") -> dict:
-    """Run the review agent over deletion cases; adds ``review`` to each trail. Returns agent stats."""
-    from collections import Counter as _Counter
-    from ghost_audit.agent import AnthropicClient, CaseInvestigator, OpenAICompatibleClient, ScriptedClient, UsageMeter
+    """Run the review agent over deletion cases; adds ``review`` to each trail. Returns agent stats.
+
+    With ``--agent-provider groq`` and several comma-separated keys in ``GROQ_API_KEYS``, one worker
+    per key reviews its share of the cases in parallel (each key has its own rate limit)."""
+    from ghost_audit.agent import AnthropicClient, OpenAICompatibleClient, ScriptedClient, UsageMeter, review_cases
     meter = UsageMeter()
-    if mode == "review":
-        client = (OpenAICompatibleClient(model=model, meter=meter) if provider == "groq"
-                  else AnthropicClient(model=model, meter=meter))
-    else:  # dry-run: scripted model that inspects the plan, then agrees
+    items = [(requests[cid], status, steps, trail) for (cid, status, steps), trail in zip(rows, trails)
+             if status != "NOT_APPLICABLE"][:limit]
+    if mode == "review" and provider == "groq":
+        keys = [k.strip() for k in os.environ.get("GROQ_API_KEYS", "").split(",") if k.strip()] or [None]
+        clients = [OpenAICompatibleClient(model=model, meter=meter, api_key=k) for k in keys]
+    elif mode == "review":
+        clients = [AnthropicClient(model=model, meter=meter)]
+    else:  # dry-run: a scripted model that inspects the plan, then agrees
         def script(turn, _messages):
             if turn == 0:
                 return {"stop_reason": "tool_use", "content": [
@@ -89,31 +95,20 @@ def run_reviews(auditor: Auditor, rows: list, trails: list, requests: dict, mode
             return {"stop_reason": "tool_use", "content": [
                 {"type": "tool_use", "id": f"t{turn}", "name": "submit_review",
                  "input": {"verdict": "AGREE", "concerns": [], "summary": "dry run: plan inspected"}}]}
-        client = None
-    verdicts, reviewed, api_errors, stopped = _Counter(), 0, 0, None
-    for (cid, status, steps), trail in zip(rows, trails):
-        if status == "NOT_APPLICABLE" or (limit is not None and reviewed >= limit):
-            continue
-        if mode != "review":
-            client = ScriptedClient(script, meter=meter)
-        try:
-            result = CaseInvestigator(auditor, client).review(requests[cid], status, steps, trail)
-            api_errors = 0
-        except (RuntimeError, OSError) as exc:   # model API unavailable: flag the case, keep the row
-            api_errors += 1
-            trail["review"] = {"verdict": "UNCERTAIN", "flagged": True, "summary": f"model API error: {exc}"[:300]}
-            verdicts["UNCERTAIN"] += 1
-            reviewed += 1
-            if api_errors >= 3:
-                stopped = f"stopped after 3 consecutive API errors at {cid}"
-                break
-            continue
-        trail["review"] = result.as_dict()
-        verdicts[result.verdict] += 1
-        reviewed += 1
-        print(f"[agent] {cid} {result.verdict} ({result.turns} turns)", file=sys.stderr, flush=True)
-    return {"mode": mode, "provider": provider if mode == "review" else "scripted", "reviewed": reviewed,
-            "stopped": stopped, "verdicts": dict(sorted(verdicts.items())),
+
+        class FreshScript(ScriptedClient):
+            """A scripted client whose turn counter restarts for every case."""
+            def create(self, system, messages, tools):
+                if len(messages) == 1:
+                    self.requests = []
+                return super().create(system, messages, tools)
+        clients = [FreshScript(script, meter=meter)]
+    reviews, verdicts = review_cases(auditor, items, clients, log=lambda m: print(m, file=sys.stderr, flush=True))
+    for (cid, _status, _steps), trail in zip(rows, trails):
+        if cid in reviews:
+            trail["review"] = reviews[cid]
+    return {"mode": mode, "provider": provider if mode == "review" else "scripted", "workers": len(clients),
+            "reviewed": len(reviews), "verdicts": dict(sorted(verdicts.items())),
             "flagged_for_human_review": sum(v for k, v in verdicts.items() if k != "AGREE"),
             "per_model": meter.as_dict()}
 
@@ -194,7 +189,7 @@ def main(argv=None):
         try:
             agent_stats = run_reviews(auditor, rows, trails, requests, args.agent, args.agent_limit, args.agent_model,
                                       args.agent_provider)
-        except (RuntimeError, ImportError) as exc:
+        except (RuntimeError, ImportError) as exc:   # no key / SDK: the deterministic output is already written
             sys.exit(f"review agent unavailable: {exc}")
         print(f"review agent ({args.agent}): {agent_stats['reviewed']} cases, verdicts {agent_stats['verdicts']}")
     trail_path = args.trail or (DEFAULT_TRAIL if args.requests is None else None)
